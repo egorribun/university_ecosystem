@@ -1,4 +1,6 @@
 import {
+  CancelledError,
+  onlineManager,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -12,6 +14,7 @@ import {
   type UseSuspenseQueryResult,
 } from "@tanstack/react-query"
 import { useMemo, useSyncExternalStore } from "react"
+import { useAuthBootstrapQueryGate } from "@/contexts/AuthBootstrapContext"
 import * as v from "valibot"
 
 import {
@@ -32,6 +35,7 @@ import {
   isCurrentBrowserSession,
 } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { hasActiveProfileBootstrap } from "@/hooks/auth/profileBootstrapActivity"
 import { pickPrivateListControls, type PrivateListControls } from "./privateListControls"
 
 export const EVENTS_PAGE_SIZE = 12
@@ -263,17 +267,28 @@ export const useEventsListQuery = (
   options?: UseEventsListQueryOptions
 ): UseEventsListQueryResult => {
   const queryClient = useQueryClient()
-  const normalized = normalizeEventsListFilters(filters)
+  const { language, is_active, search, location, limit, order } = filters
+  const normalized = useMemo(
+    () => normalizeEventsListFilters({ language, is_active, search, location, limit, order }),
+    [language, is_active, search, location, limit, order]
+  )
   const owner = useAuthStore(getConfirmedUserId)
   const epoch = getSessionEpoch()
   const isCurrentSession = useMemo(() => captureSessionEpoch(epoch), [epoch])
-  const queryKey = eventsListQueryKey(filters)
+  const queryKey = useMemo(() => eventsListQueryKey(normalized), [normalized])
   const { enabled = true, ...rest } = pickPrivateListControls(options)
-
-  const queryFn = useMemo(
-    () => createEventsListQueryFn(queryClient, normalized, queryKey, owner),
-    [queryClient, normalized, queryKey, owner]
+  const { blocked: bootstrapBlocked, cancelIfBlocked } = useAuthBootstrapQueryGate(
+    queryClient,
+    queryKey
   )
+
+  const queryFn = useMemo(() => {
+    const original = createEventsListQueryFn(queryClient, normalized, queryKey, owner)
+    return async (args: Parameters<typeof original>[0]) => {
+      cancelIfBlocked()
+      return original(args)
+    }
+  }, [queryClient, normalized, queryKey, owner, cancelIfBlocked])
 
   // Legacy arrays cannot establish date order or pagination completeness.
   // Explicit-order feeds use their exact persisted React Query pages instead.
@@ -323,7 +338,10 @@ export const useEventsListQuery = (
   >({
     ...rest,
     queryKey,
-    enabled: (typeof window === "undefined" || owner !== null) && enabled,
+    enabled:
+      (typeof window === "undefined" || owner !== null) &&
+      enabled &&
+      (typeof window === "undefined" || !bootstrapBlocked),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<Event>) => lastPage?.next_cursor ?? null,
     queryFn,
@@ -352,14 +370,31 @@ export const lastEventPage = (
 ): PaginatedResponse<Event> | null => data?.pages?.[data.pages.length - 1] ?? null
 
 export const prefetchEventsListQuery = (queryClient: QueryClient, filters: EventsListFilters) => {
+  const blocked = () =>
+    typeof window !== "undefined" &&
+    onlineManager.isOnline() &&
+    hasActiveProfileBootstrap(queryClient)
+  // Imperative route loaders can run before the provider mounts: never wait
+  // for it here. Offline-first prefetch and SSR keep their existing behavior.
+  if (blocked()) return Promise.resolve()
   const normalized = normalizeEventsListFilters(filters)
   const queryKey = eventsListQueryKey(filters)
-  const queryFn = createEventsListQueryFn(
+  const original = createEventsListQueryFn(
     queryClient,
     normalized,
     queryKey,
     getCurrentConfirmedUserId()
   )
+  const queryFn = async (args: Parameters<typeof original>[0]) => {
+    // A failed offline-first request may resume on reconnect without calling
+    // prefetchEventsListQuery again. Cancel its exact attempt before transport.
+    if (blocked()) {
+      void queryClient.cancelQueries({ queryKey, exact: true })
+      void queryClient.invalidateQueries({ queryKey, exact: true, refetchType: "none" })
+      throw new CancelledError({ revert: true })
+    }
+    return original(args)
+  }
 
   return queryClient.prefetchInfiniteQuery({
     queryKey,

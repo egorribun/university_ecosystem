@@ -34,6 +34,7 @@ import type { User } from "@/types/User"
 import type { UserRole } from "@/api/generated"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearLegacyAccessToken } from "./legacyTokenCleanup"
+import { startProfileBootstrap } from "./profileBootstrapActivity"
 import { logError, logWarning } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
 import {
@@ -1128,6 +1129,7 @@ export const useProfileSync = (
   // the stateful `initializing` flag alone cannot make an in-flight request
   // idempotent.
   const autoFetchAttemptedRef = useRef(false)
+  const profileBootstrapActivityRef = useRef<ReturnType<typeof startProfileBootstrap> | null>(null)
   // Keep the latest loading state available to the effect without adding the
   // state setter to its dependency cycle. A render-time ref assignment is
   // intentional here: the auto-fetch guard must observe the value before any
@@ -1630,7 +1632,12 @@ export const useProfileSync = (
     // This prevents a dependency-only rerender from cancelling/restarting an
     // in-flight query.
     if (autoFetchAttemptedRef.current) {
-      return
+      const activity = profileBootstrapActivityRef.current
+      if (!activity) return
+      // StrictMode and effect dependency changes may replay setup while the
+      // original bootstrap promise is still active. Restore only its lease.
+      activity.resume()
+      return () => activity.suspend()
     }
     if (
       shouldBeginAutoFetch({
@@ -1647,6 +1654,8 @@ export const useProfileSync = (
     // path remains indistinguishable from an unattempted fetch and a later
     // dependency-only rerender can issue a second `/users/me` request.
     autoFetchAttemptedRef.current = true
+    const activity = startProfileBootstrap(queryClient)
+    profileBootstrapActivityRef.current = activity
     // Wave 135 SW1 — queryClient.cancelQueries is the sole cancellation
     // mechanism: it fires the internal AbortSignal attached to the queryFn,
     // which the factory's queryFn → fetchCurrentUser → axios respects via the
@@ -1801,6 +1810,8 @@ export const useProfileSync = (
         // back-to-back calls idempotent; if a cancellation fired upstream
         // the loading flag was already going to be reset by the next
         // auto-fetch effect run.
+        activity.finish()
+        profileBootstrapActivityRef.current = null
         if (bootstrapQueryKey) {
           queryClient.removeQueries({
             queryKey: bootstrapQueryKey,
@@ -1811,6 +1822,8 @@ export const useProfileSync = (
         setInitializing(false)
       }
     })()
+    // Drop this provider's lease on unmount, including a paused offline fetch.
+    return () => activity.suspend()
     // Wave 134 SW1 — `queryClient` added to deps because the bridged
     // auto-fetch now calls queryClient.cancelQueries + queryClient.fetchQuery.
     // The reference is stable via useQueryClient (Provider-level memoised),

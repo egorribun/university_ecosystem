@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
 } from "react"
 import { resetEtagCache, registerSigningKeyAccessor } from "@/api/client"
@@ -11,7 +12,12 @@ import { notifyManager, useQueryClient } from "@tanstack/react-query"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
 import { readSsrAuthHint } from "@/hooks/auth/ssrAuthHint"
-import { AuthBootstrapContext } from "@/contexts/AuthBootstrapContext"
+import {
+  AuthBootstrapContext,
+  CommittedAuthBootstrapContext,
+  type CommittedAuthBootstrap,
+} from "@/contexts/AuthBootstrapContext"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType, PendingMfaState, UserState } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
@@ -145,6 +151,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     isCurrentSigningSession
   )
 
+  const committedBootstrap = useRef<CommittedAuthBootstrap>({
+    pending: bootstrapPending,
+    active: true,
+  })
+  useIsomorphicLayoutEffect(() => {
+    committedBootstrap.current.pending = bootstrapPending
+    committedBootstrap.current.active = true
+    return () => {
+      committedBootstrap.current.active = false
+    }
+  }, [bootstrapPending])
+
   const { login, logout, submitMfaChallenge, requireMfa, refresh } = useAuthApi(
     user,
     setUser,
@@ -237,7 +255,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <AuthBootstrapContext.Provider value={bootstrapPending}>
-      <AuthContext.Provider value={value}>{cacheOwnerReady ? children : null}</AuthContext.Provider>
+      <CommittedAuthBootstrapContext.Provider value={committedBootstrap}>
+        <AuthContext.Provider value={value}>
+          {cacheOwnerReady ? children : null}
+        </AuthContext.Provider>
+      </CommittedAuthBootstrapContext.Provider>
     </AuthBootstrapContext.Provider>
   )
 }
