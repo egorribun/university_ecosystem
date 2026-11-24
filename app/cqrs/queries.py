@@ -1,14 +1,16 @@
 import hashlib
 import json
+import secrets
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.localization import (  # LOW-W19: moved from deferred inline import
     translate,
     translate_lesson_type,
@@ -20,6 +22,7 @@ from app.repositories.schedule_repository import (
 )
 from app.schemas import schemas
 from app.services import stats_cache  # LOW-W19: moved from deferred inline import
+from app.services.stats_fill_fence import StatsFillFence
 
 
 @dataclass
@@ -97,13 +100,33 @@ class GetStatsQuery(Query):
     skip_cache: bool
 
 
+class StatsFillFenceProtocol(Protocol):
+    async def reserve(self, key: str, token: str, ttl: int) -> bool | None:
+        """Return True if acquired, False on conflict, or None if unknown or unsupported."""
+        ...
+
+    async def complete(
+        self, key: str, token: str, payload: object, ttl: int
+    ) -> bool | None:
+        """Return True if published, False on conflict, or None if unknown or unsupported."""
+        ...
+
+
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
     def __init__(
-        self, db: AsyncSession, cache: BaseCache, analytics_service: Any
+        self,
+        db: AsyncSession,
+        cache: BaseCache,
+        analytics_service: Any,
+        *,
+        fill_fence: StatsFillFenceProtocol | None = None,
     ) -> None:
         self.db = db
         self.cache = cache
         self.analytics_service = analytics_service
+        self.fill_fence = (
+            fill_fence if fill_fence is not None else StatsFillFence(cache)
+        )
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         stats = None
@@ -164,9 +187,11 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
             raise ValueError("Summary queries must share user and representation scope")
 
         raw: dict[str, dict[str, Any]] = {}
+        hot_period_keys: dict[str, str] = {}
         missing: list[str] = []
         for query in queries:
             cached = None
+            lookup_period_key = query.period_key
             if not query.skip_cache and self.cache.enabled:
                 cached = await stats_cache.get_cached_stats(
                     cache=self.cache,
@@ -177,41 +202,103 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 )
             if cached is None:
                 # Match the service's own cache lookup before calculating a miss.
+                lookup_period_key = stats_cache.resolve_period_key(
+                    query.period_key, query.period_days
+                )
                 cached = await stats_cache.get_cached_stats(
                     cache=self.cache,
                     kind=query.kind,
                     user_id=query.user_id,
-                    period_key=stats_cache.resolve_period_key(
-                        query.period_key, query.period_days
-                    ),
+                    period_key=lookup_period_key,
                     skip_cache=query.skip_cache,
                 )
             if cached is None:
                 missing.append(query.kind)
             else:
                 raw[query.kind] = cached.payload
+                hot_period_keys[query.kind] = lookup_period_key
 
         if missing:
+            reservations: dict[str, tuple[str, str]] = {}
+            if not first.skip_cache and self.cache.enabled:
+                for query in queries:
+                    if query.kind not in missing:
+                        continue
+                    period_key = stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    )
+                    cache_key = stats_cache.make_stats_cache_key(
+                        query.kind, query.user_id, period_key
+                    )
+                    token = secrets.token_hex(16)
+                    reserved = await self.fill_fence.reserve(
+                        cache_key,
+                        token,
+                        max(1, min(30, settings.stats_cache_ttl_seconds)),
+                    )
+                    if reserved is True:
+                        reservations[query.kind] = (cache_key, token)
+
             computed = await self.analytics_service.get_summary_stats(
                 user_id=first.user_id,
                 period_days=first.period_days,
                 period_key=first.period_key,
                 kinds=missing,
             )
+
+            # A hot entry can disappear while the first snapshot is being read.
+            vanished: list[str] = []
+            for query in queries:
+                if query.kind in missing or query.skip_cache or not self.cache.enabled:
+                    continue
+                replacement = await stats_cache.get_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=hot_period_keys[query.kind],
+                )
+                if replacement is None:
+                    vanished.append(query.kind)
+                else:
+                    raw[query.kind] = replacement.payload
+
+            if vanished:
+                refreshed = await self.analytics_service.get_summary_stats(
+                    user_id=first.user_id,
+                    period_days=first.period_days,
+                    period_key=first.period_key,
+                    kinds=vanished,
+                )
+                for kind in vanished:
+                    raw[kind] = refreshed[kind]
+
             for query in queries:
                 if query.kind not in missing:
                     continue
                 payload = computed[query.kind]
-                await stats_cache.set_cached_stats(
-                    cache=self.cache,
-                    kind=query.kind,
-                    user_id=query.user_id,
-                    period_key=stats_cache.resolve_period_key(
-                        query.period_key, query.period_days
-                    ),
-                    payload=payload,
-                    skip_cache=query.skip_cache,
-                )
+                completed = False
+                reservation = reservations.get(query.kind)
+                if reservation is not None:
+                    cache_key, token = reservation
+                    completed = (
+                        await self.fill_fence.complete(
+                            cache_key,
+                            token,
+                            payload,
+                            settings.stats_cache_ttl_seconds,
+                        )
+                    ) is True
+                if not completed and not query.skip_cache and self.cache.enabled:
+                    replacement = await stats_cache.get_cached_stats(
+                        cache=self.cache,
+                        kind=query.kind,
+                        user_id=query.user_id,
+                        period_key=stats_cache.resolve_period_key(
+                            query.period_key, query.period_days
+                        ),
+                    )
+                    if replacement is not None:
+                        payload = replacement.payload
                 raw[query.kind] = payload
 
         return (

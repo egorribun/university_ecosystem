@@ -278,36 +278,68 @@ async def test_participation_stats_summarize_events(
 async def test_attendance_stats_uses_cache(
     async_client, fake_cache, user_factory, monkeypatch
 ):
+    from app.repositories.user_stats_repository import UserStatsRepository
+    from app.services.stats_fill_fence import StatsFillFence
+    from app.services.user import analytics_service as analytics_module
+
     password = "CachePass123!"
     hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
-
     await _login(async_client, student.email, password)
 
-    calls = {"get": 0, "set": 0}
-    original_get = cache_module.RedisCache.get
-    original_set = cache_module.RedisCache.set
+    # The request fixture is a RedisCache subclass. Bind the real adapter to
+    # an exact RedisCache using the request cache's in-memory Redis client.
+    request_caches = []
 
-    async def tracked_get(self, key):
-        calls["get"] += 1
-        return await original_get(self, key)
+    def fixture_fence(cache):
+        assert isinstance(cache, cache_module.RedisCache)
+        request_caches.append(cache)
+        exact_cache = cache_module.RedisCache(url="unused", default_ttl=180)
+        exact_cache._client = cache._client
+        return StatsFillFence(exact_cache)
 
-    async def tracked_set(self, key, payload, ttl=None):
-        calls["set"] += 1
-        return await original_set(self, key, payload, ttl=ttl)
+    monkeypatch.setattr(analytics_module, "StatsFillFence", fixture_fence)
+    calls = 0
+    original_read = UserStatsRepository.get_attendance_stats_raw
 
-    monkeypatch.setattr(cache_module.RedisCache, "get", tracked_get)
-    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
+    async def tracked_read(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await original_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(UserStatsRepository, "get_attendance_stats_raw", tracked_read)
 
     first = await async_client.get("/stats/attendance")
     assert first.status_code == 200
+    key = stats_cache.make_stats_cache_key("attendance", student.id, "30d")
+    assert len(request_caches) == 1
+    request_cache = request_caches[0]
+    entry = await request_cache.get(key)
+    assert entry is not None and isinstance(entry.payload, dict)
+    assert entry.payload == {
+        key: value for key, value in first.json().items() if key != "period_label"
+    }
+    assert entry.ttl_seconds == float(settings.stats_cache_ttl_seconds)
+    assert calls == 1
 
     second = await async_client.get("/stats/attendance")
     assert second.status_code == 200
     assert second.json() == first.json()
+    assert second.headers["etag"] == first.headers["etag"]
+    assert calls == 1
 
-    assert 3 <= calls["get"] <= 5
-    assert calls["set"] == 1
+    bypass = await async_client.get("/stats/attendance?skip_cache=true")
+    assert bypass.status_code == 200
+    assert bypass.json() == first.json()
+    assert calls == 2
+    after = await request_cache.get(key)
+    assert after is not None
+    assert (after.payload, after.etag, after.stored_at, after.ttl_seconds) == (
+        entry.payload,
+        entry.etag,
+        entry.stored_at,
+        entry.ttl_seconds,
+    )
 
 
 @pytest.mark.asyncio

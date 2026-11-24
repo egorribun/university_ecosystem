@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -9,11 +10,12 @@ from zoneinfo import ZoneInfo
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
-from app.deps.cache import BaseCache
+from app.deps.cache import BaseCache, get_cache
 from app.models import Grade
 from app.repositories.user_stats_repository import UserGradeRow, UserStatsRepository
 from app.schemas.dtos.analytics import ParticipationStatsDTO
 from app.services import stats_cache
+from app.services.stats_fill_fence import StatsFillFence
 
 logger = get_logger(__name__)
 
@@ -72,15 +74,40 @@ class UserAnalyticsService:
         if cached is not None:
             return cast(dict[str, Any], cached.payload)
 
-        result = await compute(cache_period_key)
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind=kind,
-            user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
-            skip_cache=skip_cache,
+        if skip_cache:
+            return await compute(cache_period_key)
+        backend = cache or get_cache()
+        if not backend.enabled:
+            return await compute(cache_period_key)
+
+        fence = StatsFillFence(backend)
+        cache_key = stats_cache.make_stats_cache_key(kind, user_id, cache_period_key)
+        token = secrets.token_hex(16)
+        reserved = await fence.reserve(
+            cache_key,
+            token,
+            max(1, min(30, settings.stats_cache_ttl_seconds)),
         )
+        if reserved is not True:
+            replacement = await stats_cache.get_cached_stats(
+                cache=backend, kind=kind, user_id=user_id, period_key=cache_period_key
+            )
+            if replacement is not None:
+                return cast(dict[str, Any], replacement.payload)
+
+        result = await compute(cache_period_key)
+        if reserved is True:
+            completed = await fence.complete(
+                cache_key, token, result, settings.stats_cache_ttl_seconds
+            )
+            if completed is True:
+                return result
+
+        replacement = await stats_cache.get_cached_stats(
+            cache=backend, kind=kind, user_id=user_id, period_key=cache_period_key
+        )
+        if replacement is not None:
+            return cast(dict[str, Any], replacement.payload)
         return result
 
     @staticmethod

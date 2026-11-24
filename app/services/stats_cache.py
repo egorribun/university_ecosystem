@@ -40,6 +40,13 @@ def _make_cache_key(kind: str, user_id: uuid.UUID | int | str, period_key: str) 
     return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{user_id!s}:{normalized_period}"
 
 
+def make_stats_cache_key(
+    kind: str, user_id: uuid.UUID | int | str, period_key: str
+) -> str:
+    """Return the canonical key shared by readers, writers and invalidators."""
+    return _make_cache_key(kind, user_id, period_key)
+
+
 async def get_cached_stats(
     *,
     cache: BaseCache | None,
