@@ -145,7 +145,7 @@ export const ScheduleListView = memo(function ScheduleListView({
               {isToday && (
                 <Badge
                   size="xs"
-                  className="sched-today-badge sched-badge-matte bg-brand text-[var(--sched-on-accent)] font-bold shadow-glow-primary"
+                  className="sched-today-badge sched-badge-matte bg-brand text-inverse-text font-bold shadow-glow-primary"
                 >
                   {t("schedule:toolbar.today", { defaultValue: "" })}
                 </Badge>
@@ -161,7 +161,7 @@ export const ScheduleListView = memo(function ScheduleListView({
                     day: label,
                     defaultValue: `Add lesson for ${label}`,
                   })}
-                  className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  className="ml-auto flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg sched-settings-btn text-brand hover:bg-brand hover:text-inverse-text focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   {/* A11Y-71-01: consistent SVG icon instead of text + */}
                   <AddIcon size={14} aria-hidden="true" />

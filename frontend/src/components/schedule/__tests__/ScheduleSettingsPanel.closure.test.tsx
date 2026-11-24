@@ -79,7 +79,7 @@ describe("ScheduleSettingsPanel closure paths", () => {
       screen.getByRole("button", { name: "schedule:parity.even" }).querySelector("span.absolute")
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "schedule:parity.even" })).toHaveClass(
-      "text-[var(--sched-on-accent)]"
+      "text-inverse-text"
     )
     expect(screen.getByRole("button", { name: "schedule:parity.odd" })).toHaveClass(
       "sched-settings-btn"

@@ -188,7 +188,7 @@ export function ScheduleMiniCalendar({
               setInternalMonth(today)
               onMonthChange?.(today)
             }}
-            className="ml-1 rounded-md bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+            className="ml-1 rounded-md bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-inverse-text transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
           >
             {t("common:today")}
           </button>

@@ -139,7 +139,7 @@ export function ScheduleSettingsPanel({
                     className={cn(
                       "relative flex-1 rounded-xl px-4 py-2.5 text-center text-sm font-semibold",
                       weekOffset === 0
-                        ? "bg-brand text-[var(--sched-on-accent)] shadow-glow-primary"
+                        ? "bg-brand text-inverse-text shadow-glow-primary"
                         : "sched-settings-btn text-text-primary"
                     )}
                   >
@@ -192,7 +192,7 @@ export function ScheduleSettingsPanel({
                       className={cn(
                         "relative flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-fast overflow-hidden",
                         currentParity === p
-                          ? "text-[var(--sched-on-accent)]"
+                          ? "text-inverse-text"
                           : "sched-settings-btn text-text-secondary hover:text-text-primary"
                       )}
                     >

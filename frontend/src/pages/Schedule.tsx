@@ -366,7 +366,7 @@ function ScheduleContent({ settingsReady }: { settingsReady: boolean }) {
                     <button
                       type="button"
                       onClick={resetPreferences}
-                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-inverse-text transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       {t("schedule:empty.resetFilters")}
                     </button>
@@ -379,7 +379,7 @@ function ScheduleContent({ settingsReady }: { settingsReady: boolean }) {
                     <button
                       type="button"
                       onClick={refresh}
-                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
+                      className="ml-auto shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-inverse-text transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       {t("schedule:error.retry")}
                     </button>
