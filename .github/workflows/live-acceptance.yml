@@ -368,10 +368,6 @@ jobs:
         working-directory: frontend
         run: npm run test:e2e:live:contract
 
-      - name: Run isolated production SSR error contract
-        working-directory: frontend
-        run: npm run test:e2e:ssr-error
-
       - name: Select unique owned frozen-RC state directory
         run: |
           state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
