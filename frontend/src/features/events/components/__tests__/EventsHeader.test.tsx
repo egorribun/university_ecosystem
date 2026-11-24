@@ -360,6 +360,20 @@ describe("EventsHeader", () => {
     })
   })
 
+  it("keeps the search field and category pills at the 44px target size", () => {
+    render(<EventsHeader {...defaultProps} />)
+    expectBaseUtility(
+      screen.getByRole("textbox", { name: /Search events/i }),
+      "min-height",
+      "calc(var(--spacing) * 11)"
+    )
+    const buttons = Array.from(screen.getByRole("toolbar").querySelectorAll("button"))
+    for (const button of buttons.slice(0, -1)) {
+      expectBaseUtility(button, "min-width", "44px")
+      expectBaseUtility(button, "justify-content", "center")
+    }
+  })
+
   it("supports category selection and arrow-key wrapping", () => {
     const onCategoryChange = vi.fn()
     render(

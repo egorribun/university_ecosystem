@@ -134,7 +134,7 @@ export const EventsHeader = ({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("events:filters.search")}
-              className="w-full rounded-xl matte-input py-2 pl-9 pr-24 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
+              className="min-h-11 w-full rounded-xl matte-input py-2 pl-9 pr-24 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
               aria-label={t("events:filters.search")}
             />
             <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center">
@@ -306,7 +306,7 @@ export const EventsHeader = ({
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
-              "rounded-full px-3 py-2 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
+              "rounded-full px-3 py-2 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
               activeCategory === "all"
                 ? "bg-brand text-[var(--text-inverse)] shadow-sm"
                 : "matte-chip text-(--text-secondary)"
@@ -323,7 +323,7 @@ export const EventsHeader = ({
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-2 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
+                "rounded-full px-3 py-2 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
                 activeCategory === cat.id ? "shadow-sm" : "matte-chip text-(--text-secondary)"
               )}
               style={
