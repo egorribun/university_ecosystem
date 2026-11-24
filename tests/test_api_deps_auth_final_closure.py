@@ -96,7 +96,7 @@ async def test_get_current_user_cached_invalid_session_id_falls_back_to_db():
 
     db.get.side_effect = db_get
     result = MagicMock()
-    result.scalars.return_value.first.return_value = session
+    result.first.return_value = (user, session)
     db.execute.return_value = result
     request = _request()
 
@@ -141,7 +141,7 @@ async def test_get_current_user_cached_stale_db_session_is_rejected():
         user if model is User else None
     )
     result = MagicMock()
-    result.scalars.return_value.first.return_value = None
+    result.first.return_value = None
     db.execute.return_value = result
     client = AsyncMock()
     client.exists.return_value = False
@@ -177,7 +177,9 @@ async def test_get_current_user_cached_inactive_user_is_rejected():
     redis_session = AsyncMock()
     redis_session.get_session.return_value = {"user_id": str(user_id)}
     db = AsyncMock()
-    db.get.return_value = SimpleNamespace(id=user_id, is_active=False)
+    result = MagicMock()
+    result.first.return_value = None
+    db.execute.return_value = result
     client = AsyncMock()
     client.exists.return_value = False
     request = _request()
@@ -226,7 +228,7 @@ async def test_get_current_user_cached_session_id_branches(session_id: str | Non
 
     db.get.side_effect = db_get
     result = MagicMock()
-    result.scalars.return_value.first.return_value = session
+    result.first.return_value = (user, session)
     db.execute.return_value = result
     client = AsyncMock()
     client.exists.return_value = False
@@ -258,10 +260,8 @@ async def test_get_current_user_cached_session_id_branches(session_id: str | Non
         assert await get_current_user(request, "token", db, redis_session) is user
 
     assert request.state.active_session is session
-    if session_id is None:
-        db.execute.assert_awaited()
-    else:
-        assert db.execute.await_count == 0
+    db.get.assert_not_awaited()
+    db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -276,7 +276,7 @@ async def test_get_current_user_rejects_none_session_after_cache_lookup():
     db = AsyncMock()
     db.get.return_value = user
     result = MagicMock()
-    result.scalars.return_value.first.return_value = None
+    result.first.return_value = None
     db.execute.return_value = result
     client = AsyncMock()
     client.exists.return_value = False
@@ -297,12 +297,13 @@ async def test_get_current_user_rejects_none_session_after_cache_lookup():
             "app.api.deps.auth.AuthTokenService.validate_payload",
             return_value=(user_id, jti),
         ),
-        patch("app.api.deps.auth.raise_unauthorized") as unauthorized,
     ):
-        with pytest.raises(AssertionError):
+        with pytest.raises(HTTPException) as error:
             await get_current_user(request, "token", db, redis_session)
 
-    assert unauthorized.call_count >= 2
+    assert error.value.status_code == 401
+    assert not hasattr(request.state, "active_session")
+    db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
