@@ -47,6 +47,7 @@ from app.core.ratelimit import sensitive_route_limit
 from app.models.enums import UserRole
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
+from app.schemas.mappers.user_mapper import map_user_orm_to_dict
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.data_access import (
@@ -192,11 +193,11 @@ async def reset_password(
 async def me(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    auth_service: FromDishka[AuthService],
+    service: FromDishka[UserProfileService],
     user: models.User = Depends(get_current_user_full),
 ) -> schemas.UserOut:
     _enforce_profile_cache_integrity(request)
-    await auth_service.refresh_pending_email(user)
+    pending_email = await service.get_pending_email(user.id)
     await log_data_access(
         db,
         actor_user_id=user.id,
@@ -206,7 +207,9 @@ async def me(
         action="read",
         request=request,
     )
-    return schemas.UserOut.model_validate(user)
+    response_data = map_user_orm_to_dict(user)
+    response_data["pending_email"] = pending_email
+    return schemas.UserOut.model_validate(response_data)
 
 
 @users_router.put(
