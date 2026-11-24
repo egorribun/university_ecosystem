@@ -101,20 +101,23 @@ class GetStatsQuery(Query):
 
 
 class StatsFillFenceProtocol(Protocol):
-    @property
-    def supported(self) -> bool:
-        """Return whether stats for this cache backend may be cached at all."""
-        ...
+    """Fence one stats cache fill.
 
-    async def reserve(self, key: str, token: str, ttl: int) -> bool | None:
-        """Return True if acquired, False on conflict, or None if unknown or unsupported."""
-        ...
+    ``supported`` tells whether stats for this cache backend may be cached at
+    all. ``reserve`` and ``complete`` return True on success, False on
+    conflict, or None when the outcome is unknown or unsupported.
+    """
+
+    @property
+    def supported(self) -> bool: ...  # pragma: no branch
+
+    async def reserve(
+        self, key: str, token: str, ttl: int
+    ) -> bool | None: ...  # pragma: no branch
 
     async def complete(
         self, key: str, token: str, payload: object, ttl: int
-    ) -> bool | None:
-        """Return True if published, False on conflict, or None if unknown or unsupported."""
-        ...
+    ) -> bool | None: ...  # pragma: no branch
 
 
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
