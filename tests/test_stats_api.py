@@ -343,59 +343,6 @@ async def test_attendance_stats_uses_cache(
 
 
 @pytest.mark.asyncio
-async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
-    original_ttl = settings.stats_cache_ttl_seconds
-    settings.stats_cache_ttl_seconds = 45
-    recorded: list[int | None] = []
-    original_set = cache_module.RedisCache.set
-
-    async def tracked_set(self, key, payload, ttl=None):
-        recorded.append(ttl)
-        return await original_set(self, key, payload, ttl=ttl)
-
-    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
-    try:
-        await stats_cache.set_cached_stats(
-            cache=fake_cache,
-            kind="attendance",
-            user_id=uuid.uuid4(),
-            period_key="30d",
-            payload={"value": 1},
-        )
-    finally:
-        settings.stats_cache_ttl_seconds = original_ttl
-
-    assert recorded == [45]
-
-
-@pytest.mark.asyncio
-async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
-    original_ttl = settings.stats_cache_ttl_seconds
-    settings.stats_cache_ttl_seconds = 60
-    recorded: list[int | None] = []
-    original_set = cache_module.RedisCache.set
-
-    async def tracked_set(self, key, payload, ttl=None):
-        recorded.append(ttl)
-        return await original_set(self, key, payload, ttl=ttl)
-
-    monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
-    try:
-        await stats_cache.set_cached_stats(
-            cache=fake_cache,
-            kind="grades",
-            user_id=uuid.uuid4(),
-            period_key="default",
-            payload={"value": 2},
-            ttl=12,
-        )
-    finally:
-        settings.stats_cache_ttl_seconds = original_ttl
-
-    assert recorded == [12]
-
-
-@pytest.mark.asyncio
 async def test_registering_for_event_invalidates_stats_cache(
     async_client,
     fake_cache,
@@ -449,19 +396,13 @@ async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake
     user_id = 77
     kind = "attendance"
 
-    await stats_cache.set_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="default",
-        payload={"value": "default"},
+    await fake_cache.set(
+        stats_cache.make_stats_cache_key(kind, user_id, "default"),
+        {"value": "default"},
     )
-    await stats_cache.set_cached_stats(
-        cache=fake_cache,
-        kind=kind,
-        user_id=user_id,
-        period_key="7d",
-        payload={"value": "custom"},
+    await fake_cache.set(
+        stats_cache.make_stats_cache_key(kind, user_id, "7d"),
+        {"value": "custom"},
     )
 
     assert (

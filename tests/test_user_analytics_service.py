@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
+from app.deps.cache import MemoryCache
 from app.services import stats_cache
 from app.services.user.analytics_service import UserAnalyticsService
 
@@ -166,7 +167,10 @@ async def test_attendance_stats_returns_cached_payload(svc, user_factory, monkey
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_attendance_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel
 
@@ -243,7 +247,10 @@ async def test_grade_stats_returns_cached_payload(svc, user_factory, monkeypatch
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_grade_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel
 
@@ -312,6 +319,9 @@ async def test_participation_stats_returns_cached_payload(
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_participation_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel

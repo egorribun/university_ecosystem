@@ -181,12 +181,9 @@ async def test_stats_cached_data_change_invalidates_old_representation_tag():
     )
     assert "period_label" not in cached.payload
     changed = {**cached.payload, "events": cached.payload["events"] + 1}
-    await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="participation",
-        user_id=user_id,
-        period_key="30d",
-        payload=changed,
+    await cache.set(
+        stats_cache.make_stats_cache_key("participation", user_id, "30d"),
+        changed,
     )
     result = await handler.handle(_query(user_id, etag=original.etag))
     assert result.not_modified is False

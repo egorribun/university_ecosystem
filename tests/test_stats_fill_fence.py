@@ -15,6 +15,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.deps.cache import (
     MemoryCache,
+    NatsKVCache,
     NullCache,
     RedisCache,
     RedisClusterCache,
@@ -205,6 +206,7 @@ async def test_unsupported_backends_fail_closed():
         NullCache(),
         TieredCache(MemoryCache(), MemoryCache()),
         RedisClusterCache("unused", 120),
+        NatsKVCache(bucket="ue_cache", default_ttl=120),
     ):
         f = StatsFillFence(cache)
         assert f.supported is False

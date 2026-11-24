@@ -93,12 +93,9 @@ async def test_single_section_cannot_overwrite_peer_after_snapshot(peer):
                 user_ids=[user_id], kinds=("grades",), period_keys=("30d",), cache=cache
             )
         if peer != "delete_only":
-            await stats_cache.set_cached_stats(
-                cache=cache,
-                kind="grades",
-                user_id=user_id,
-                period_key="30d",
-                payload={"average": 5.0},
+            await cache.set(
+                stats_cache.make_stats_cache_key("grades", user_id, "30d"),
+                {"average": 5.0},
             )
         repo.resume.set()
         result = await asyncio.wait_for(task, 2)
@@ -132,12 +129,9 @@ async def test_warmup_uses_guarded_service_and_preserves_peer(monkeypatch):
         await stats_cache.invalidate_user_stats_cache(
             user_ids=[user_id], kinds=("grades",), period_keys=("30d",), cache=cache
         )
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key="30d",
-            payload={"average": 5.0},
+        await cache.set(
+            stats_cache.make_stats_cache_key("grades", user_id, "30d"),
+            {"average": 5.0},
         )
         repo.resume.set()
         await asyncio.wait_for(task, 2)
@@ -176,6 +170,8 @@ async def test_unavailable_reservation_never_falls_back_to_unconditional_set(
     service, cache, repo, user_id = components()
 
     class UnknownFence:
+        supported = True
+
         def __init__(self, _cache):
             pass
 
@@ -202,6 +198,8 @@ async def test_peer_completes_between_failed_reserve_and_cache_recheck(monkeypat
     assert await fence.reserve(key, peer_token, 10) is True
 
     class PeerCompletes:
+        supported = True
+
         async def reserve(self, key, token, ttl):
             assert await fence.reserve(key, token, ttl) is False
             assert await fence.complete(key, peer_token, {"average": 5.0}, 60) is True

@@ -15,7 +15,7 @@ from app.models import Grade
 from app.repositories.user_stats_repository import UserGradeRow, UserStatsRepository
 from app.schemas.dtos.analytics import ParticipationStatsDTO
 from app.services import stats_cache
-from app.services.stats_fill_fence import StatsFillFence
+from app.services.stats_fill_fence import StatsFillFence, reservation_ttl
 
 logger = get_logger(__name__)
 
@@ -64,30 +64,23 @@ class UserAnalyticsService:
         compute: Callable[[str], Awaitable[dict[str, Any]]],
     ) -> dict[str, Any]:
         cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind=kind,
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            return cast(dict[str, Any], cached.payload)
-
         if skip_cache:
             return await compute(cache_period_key)
         backend = cache or get_cache()
         if not backend.enabled:
             return await compute(cache_period_key)
-
         fence = StatsFillFence(backend)
+        if not fence.supported:
+            return await compute(cache_period_key)
+        cached = await stats_cache.get_cached_stats(
+            cache=backend, kind=kind, user_id=user_id, period_key=cache_period_key
+        )
+        if cached is not None:
+            return cast(dict[str, Any], cached.payload)
+
         cache_key = stats_cache.make_stats_cache_key(kind, user_id, cache_period_key)
         token = secrets.token_hex(16)
-        reserved = await fence.reserve(
-            cache_key,
-            token,
-            max(1, min(30, settings.stats_cache_ttl_seconds)),
-        )
+        reserved = await fence.reserve(cache_key, token, reservation_ttl())
         if reserved is not True:
             replacement = await stats_cache.get_cached_stats(
                 cache=backend, kind=kind, user_id=user_id, period_key=cache_period_key

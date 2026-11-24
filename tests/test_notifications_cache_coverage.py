@@ -141,10 +141,10 @@ class TestStatsCache:
         assert resolve_period_key(None, 30) == "30d"
         assert resolve_period_key(None, None) == "default"
 
-    def test_make_cache_key(self):
-        from app.services.stats_cache import _make_cache_key
+    def testmake_stats_cache_key(self):
+        from app.services.stats_cache import make_stats_cache_key
 
-        key = _make_cache_key("attendance", uuid.uuid4(), "30d")
+        key = make_stats_cache_key("attendance", uuid.uuid4(), "30d")
         assert key.startswith("stats:attendance:")
 
     @pytest.mark.asyncio
@@ -161,33 +161,16 @@ class TestStatsCache:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_set_cached_stats_skip(self):
-        from app.services.stats_cache import set_cached_stats
-
-        result = await set_cached_stats(
-            cache=MagicMock(),
-            kind="test",
-            user_id=uuid.uuid4(),
-            period_key="30d",
-            payload={"data": 1},
-            skip_cache=True,
-        )
-        assert result is None
-
-    @pytest.mark.asyncio
     async def test_get_cached_stats_hit(self):
         from app.deps.cache import MemoryCache
-        from app.services.stats_cache import get_cached_stats, set_cached_stats
+        from app.services.stats_cache import get_cached_stats, make_stats_cache_key
 
         cache = MemoryCache(default_ttl=300)
         uid = uuid.uuid4()
 
-        await set_cached_stats(
-            cache=cache,
-            kind="test",
-            user_id=uid,
-            period_key="30d",
-            payload={"score": 95},
+        await cache.set(
+            make_stats_cache_key("test", uid, "30d"),
+            {"score": 95},
         )
         result = await get_cached_stats(
             cache=cache,

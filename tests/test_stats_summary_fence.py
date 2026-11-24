@@ -150,7 +150,7 @@ async def invalidate_grades(cache, user_id):
 
 
 def key(user_id, kind):
-    return stats_cache._make_cache_key(kind, user_id, "30d")
+    return stats_cache.make_stats_cache_key(kind, user_id, "30d")
 
 
 @pytest.mark.asyncio
@@ -238,12 +238,9 @@ async def test_cold_legacy_peer_displaces_reservation(monkeypatch, delete_first)
             skip_cache=True,
         )
         assert payload["average"] == 5.0
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key="30d",
-            payload=payload,
+        await cache.set(
+            stats_cache.make_stats_cache_key("grades", user_id, "30d"),
+            payload,
         )
         peer = await cache.get(key(user_id, "grades"))
         repo.resume.set()
@@ -594,9 +591,12 @@ async def test_unsupported_adapter_remains_explicitly_unfilled(monkeypatch):
     analytics.stats_repo = repo
     handler = GetStatsHandler(None, cache, analytics)
     user_id = uuid4()
+    # An entry the fence could not have written is never served either.
+    await cache.set(key(user_id, "grades"), {"stale": True})
     assert await summary(handler, user_id) == await summary(handler, user_id)
     assert repo.requested == [frozenset(KINDS), frozenset(KINDS)]
-    entries = [await cache.get(key(user_id, kind)) for kind in KINDS]
+    assert await cache.get(key(user_id, "grades")) is not None
+    entries = [await cache.get(key(user_id, kind)) for kind in KINDS[::2]]
     assert all(entry is None for entry in entries)
 
 
@@ -630,19 +630,13 @@ async def test_hot_resolved_period_hit_is_rechecked_on_same_key(
 @pytest.mark.asyncio
 async def test_outer_default_period_hit_is_not_replaced_by_resolved_hit(monkeypatch):
     handler, cache, repo, _fence, user_id = components(monkeypatch)
-    await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="grades",
-        user_id=user_id,
-        period_key="default",
-        payload={"average": 3.0},
+    await cache.set(
+        stats_cache.make_stats_cache_key("grades", user_id, "default"),
+        {"average": 3.0},
     )
-    await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="grades",
-        user_id=user_id,
-        period_key="30d",
-        payload={"average": 5.0},
+    await cache.set(
+        stats_cache.make_stats_cache_key("grades", user_id, "30d"),
+        {"average": 5.0},
     )
     result = await handler.handle_summary(scoped_queries(user_id, ""))
     assert result[1].payload["average"] == 3.0
@@ -665,12 +659,9 @@ async def test_failed_cold_publish_rereads_reserved_resolved_key(monkeypatch):
             skip_cache=True,
         )
         assert payload["average"] == 5.0
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key="30d",
-            payload=payload,
+        await cache.set(
+            stats_cache.make_stats_cache_key("grades", user_id, "30d"),
+            payload,
         )
         repo.resume.set()
         result = await asyncio.wait_for(task, 2)
@@ -686,7 +677,7 @@ def test_public_stats_key_helper_keeps_existing_wire_format():
     user_id = uuid4()
     for period in ("", " 30D ", "7d"):
         assert stats_cache.make_stats_cache_key(" Grades ", user_id, period) == (
-            stats_cache._make_cache_key(" Grades ", user_id, period)
+            stats_cache.make_stats_cache_key(" Grades ", user_id, period)
         )
 
 
@@ -721,6 +712,8 @@ async def test_unexpected_fence_error_propagates(monkeypatch):
     handler, _cache, _repo, _fence, user_id = components(monkeypatch)
 
     class BrokenFence:
+        supported = True
+
         async def reserve(self, *_args):
             raise RuntimeError("unexpected fence error")
 

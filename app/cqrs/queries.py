@@ -22,7 +22,7 @@ from app.repositories.schedule_repository import (
 )
 from app.schemas import schemas
 from app.services import stats_cache  # LOW-W19: moved from deferred inline import
-from app.services.stats_fill_fence import StatsFillFence
+from app.services.stats_fill_fence import StatsFillFence, reservation_ttl
 
 
 @dataclass
@@ -101,6 +101,11 @@ class GetStatsQuery(Query):
 
 
 class StatsFillFenceProtocol(Protocol):
+    @property
+    def supported(self) -> bool:
+        """Return whether stats for this cache backend may be cached at all."""
+        ...
+
     async def reserve(self, key: str, token: str, ttl: int) -> bool | None:
         """Return True if acquired, False on conflict, or None if unknown or unsupported."""
         ...
@@ -128,9 +133,12 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
             fill_fence if fill_fence is not None else StatsFillFence(cache)
         )
 
+    def _caches(self, query: GetStatsQuery) -> bool:
+        return not query.skip_cache and self.cache.enabled and self.fill_fence.supported
+
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         stats = None
-        if not query.skip_cache and self.cache.enabled:
+        if self._caches(query):
             cached = await stats_cache.get_cached_stats(
                 cache=self.cache,
                 kind=query.kind,
@@ -192,26 +200,24 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         for query in queries:
             cached = None
             lookup_period_key = query.period_key
-            if not query.skip_cache and self.cache.enabled:
+            if self._caches(query):
                 cached = await stats_cache.get_cached_stats(
                     cache=self.cache,
                     kind=query.kind,
                     user_id=query.user_id,
                     period_key=query.period_key,
-                    skip_cache=query.skip_cache,
                 )
-            if cached is None:
-                # Match the service's own cache lookup before calculating a miss.
-                lookup_period_key = stats_cache.resolve_period_key(
-                    query.period_key, query.period_days
-                )
-                cached = await stats_cache.get_cached_stats(
-                    cache=self.cache,
-                    kind=query.kind,
-                    user_id=query.user_id,
-                    period_key=lookup_period_key,
-                    skip_cache=query.skip_cache,
-                )
+                if cached is None:
+                    # Match the service's own cache lookup before calculating a miss.
+                    lookup_period_key = stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    )
+                    cached = await stats_cache.get_cached_stats(
+                        cache=self.cache,
+                        kind=query.kind,
+                        user_id=query.user_id,
+                        period_key=lookup_period_key,
+                    )
             if cached is None:
                 missing.append(query.kind)
             else:
@@ -220,7 +226,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
 
         if missing:
             reservations: dict[str, tuple[str, str]] = {}
-            if not first.skip_cache and self.cache.enabled:
+            if self._caches(first):
                 for query in queries:
                     if query.kind not in missing:
                         continue
@@ -232,9 +238,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                     )
                     token = secrets.token_hex(16)
                     reserved = await self.fill_fence.reserve(
-                        cache_key,
-                        token,
-                        max(1, min(30, settings.stats_cache_ttl_seconds)),
+                        cache_key, token, reservation_ttl()
                     )
                     if reserved is True:
                         reservations[query.kind] = (cache_key, token)
@@ -249,7 +253,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
             # A hot entry can disappear while the first snapshot is being read.
             vanished: list[str] = []
             for query in queries:
-                if query.kind in missing or query.skip_cache or not self.cache.enabled:
+                if query.kind in missing or not self._caches(query):
                     continue
                 replacement = await stats_cache.get_cached_stats(
                     cache=self.cache,
@@ -288,7 +292,7 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                             settings.stats_cache_ttl_seconds,
                         )
                     ) is True
-                if not completed and not query.skip_cache and self.cache.enabled:
+                if not completed and self._caches(query):
                     replacement = await stats_cache.get_cached_stats(
                         cache=self.cache,
                         kind=query.kind,
