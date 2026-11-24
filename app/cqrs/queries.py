@@ -137,6 +137,90 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 skip_cache=query.skip_cache,
             )
 
+        return self._stats_result(stats, query)
+
+    async def handle_summary(
+        self, queries: tuple[GetStatsQuery, GetStatsQuery, GetStatsQuery]
+    ) -> tuple[QueryResult, QueryResult, QueryResult]:
+        """Read uncached summary sections together while retaining per-kind caches."""
+        if tuple(query.kind for query in queries) != (
+            "attendance",
+            "grades",
+            "participation",
+        ):
+            raise ValueError("Invalid summary kinds")
+        first = queries[0]
+        if any(
+            (q.user_id, q.period_key, q.period_days, q.locale, q.skip_cache)
+            != (
+                first.user_id,
+                first.period_key,
+                first.period_days,
+                first.locale,
+                first.skip_cache,
+            )
+            for q in queries[1:]
+        ):
+            raise ValueError("Summary queries must share user and representation scope")
+
+        raw: dict[str, dict[str, Any]] = {}
+        missing: list[str] = []
+        for query in queries:
+            cached = None
+            if not query.skip_cache and self.cache.enabled:
+                cached = await stats_cache.get_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=query.period_key,
+                    skip_cache=query.skip_cache,
+                )
+            if cached is None:
+                # Match the service's own cache lookup before calculating a miss.
+                cached = await stats_cache.get_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    ),
+                    skip_cache=query.skip_cache,
+                )
+            if cached is None:
+                missing.append(query.kind)
+            else:
+                raw[query.kind] = cached.payload
+
+        if missing:
+            computed = await self.analytics_service.get_summary_stats(
+                user_id=first.user_id,
+                period_days=first.period_days,
+                period_key=first.period_key,
+                kinds=missing,
+            )
+            for query in queries:
+                if query.kind not in missing:
+                    continue
+                payload = computed[query.kind]
+                await stats_cache.set_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    ),
+                    payload=payload,
+                    skip_cache=query.skip_cache,
+                )
+                raw[query.kind] = payload
+
+        return (
+            self._stats_result(raw[queries[0].kind], queries[0]),
+            self._stats_result(raw[queries[1].kind], queries[1]),
+            self._stats_result(raw[queries[2].kind], queries[2]),
+        )
+
+    def _stats_result(self, stats: dict[str, Any], query: GetStatsQuery) -> QueryResult:
         # Validators belong to the localized response, not the raw cache entry.
         payload = self._enrich_stats(stats, query)
         etag = self._compute_etag(payload)

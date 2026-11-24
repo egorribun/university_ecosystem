@@ -101,10 +101,14 @@ async def test_summary_uses_one_real_async_session_sequentially():
                 result = await session.execute(text("SELECT 1"))
                 return {"value": result.scalar_one()}
 
+            async def compute_summary(*, kinds, **_kwargs):
+                return {kind: await compute() for kind in kinds}
+
             analytics = SimpleNamespace(
                 get_attendance_stats=compute,
                 get_grade_stats=compute,
                 get_participation_stats=compute,
+                get_summary_stats=compute_summary,
             )
             handler = GetStatsHandler(session, NullCache(), analytics)
             result = await call_injected(
