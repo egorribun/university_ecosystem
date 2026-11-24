@@ -183,9 +183,6 @@ async def _resolve_current_user(
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     # 4. Security Lifecycle Validation
-    if session is None:
-        raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None  # noqa: S101
     if not session_epoch_is_current(session.mfa_epoch, user.mfa_epoch):
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
