@@ -324,3 +324,49 @@ test("group reconnect acceptance guards reject missing replay, isolation and ded
     assert.throws(() => assertGroupReconnect(candidate), { name: "AssertionError" })
   }
 })
+
+function assertAdmissionGate(source) {
+  const first = source.indexOf("currentAdmission(teacherSocket, chatId) !== null")
+  const pollStart = source.lastIndexOf(".poll(", first)
+  const pollEnd = source.indexOf(".toBe(true)", first)
+  assert.ok(pollStart >= 0 && first > pollStart && pollEnd > first)
+  const jointPoll = source.slice(pollStart, pollEnd)
+  assert.match(
+    jointPoll,
+    /currentAdmission\(teacherSocket, chatId\) !== null\s*&&\s*currentAdmission\(secondMemberSocket, chatId\) !== null/u
+  )
+  assert.doesNotMatch(jointPoll, /timeout/u)
+  assert.equal((jointPoll.match(/\.poll\(/gu) ?? []).length, 1)
+  const click = source.indexOf('await page.locator("#chat-send-btn").click()', pollEnd)
+  const response = source.indexOf("expect(messageResponse.ok()).toBe(true)", click)
+  assert.ok(click > pollEnd && response > click)
+  const teacher = "admissionStillCurrent(teacherSocket, teacherAdmission)"
+  const member = "admissionStillCurrent(secondMemberSocket, secondMemberAdmission)"
+  for (const marker of [teacher, member]) {
+    assert.ok(source.indexOf(marker, pollEnd) < click)
+    assert.ok(source.indexOf(marker, response) > response)
+  }
+  assert.match(source, /observation\.sessions\.at\(-1\) === receipt\.session/u)
+  assert.match(source, /!receipt\.session\.closed\(\)/u)
+  assert.match(source, /receipt\.session\.admission\.isCurrent\(receipt\.attempt\)/u)
+  assert.match(source, /session\.admission\.sent\(value\)/u)
+  assert.match(source, /session\.admission\.received\(value\)/u)
+}
+
+test("group delivery waits once for both current recipient admissions before POST", () => {
+  assertAdmissionGate(spec)
+})
+
+test("group admission gate rejects loss of either recipient or socket lifetime guard", () => {
+  for (const marker of [
+    "currentAdmission(teacherSocket, chatId) !== null",
+    "currentAdmission(secondMemberSocket, chatId) !== null",
+    "!receipt.session.closed()",
+    "receipt.session.admission.isCurrent(receipt.attempt)",
+    "session.admission.received(value)",
+  ]) {
+    const altered = spec.replace(marker, "false")
+    assert.notEqual(altered, spec)
+    assert.throws(() => assertAdmissionGate(altered), { name: "AssertionError" })
+  }
+})

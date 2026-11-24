@@ -159,6 +159,12 @@ const HeartbeatPongSchema = v.object({
   nonce: HeartbeatNonceSchema,
 })
 
+const RoomAdmittedSchema = v.object({
+  type: v.literal("room_admitted"),
+  room: UuidString,
+  nonce: HeartbeatNonceSchema,
+})
+
 // Wave 205 — REST-initiated server→client broadcasts (the author edited / soft-deleted
 // a message). The frame field is `message_id` (NOT `id`); the cache-update matches on
 // it. No self-echo guard needed: the author already updated optimistically and the
@@ -209,6 +215,7 @@ const ReplayCheckpointSchema = v.object({
 export const WsServerMessageSchema = v.variant("type", [
   PongSchema,
   HeartbeatPongSchema,
+  RoomAdmittedSchema,
   ErrorSchema,
   RateLimitExceededSchema,
   NewMessageSchema,
@@ -274,6 +281,16 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   if (!result.success) {
     return null
   }
+
+  // Admission is a direct control frame, never a broadcast or replay envelope.
+  if (
+    result.output.type === "room_admitted" &&
+    ("payload" in parsedRecord ||
+      "seq" in parsedRecord ||
+      "replayed" in parsedRecord ||
+      "resume_token" in parsedRecord)
+  )
+    return null
 
   let streamMetadata: { sequence: number; source: Record<string, unknown> } | undefined
   let replayed: boolean | undefined

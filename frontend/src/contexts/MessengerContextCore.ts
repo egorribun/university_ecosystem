@@ -9,6 +9,8 @@ export interface MessengerContextType {
   unreadCount: number
   presenceMap: Record<string, { active: boolean; last_seen_at: string | null }>
   isConnected: boolean
+  /** Confirmed membership only; replay catch-up may still be in progress. */
+  admittedRoom?: string | null
   sendTyping: (chatId: string) => void
   sendJoin: (chatId: string) => void
   sendLeave: (chatId: string) => void
@@ -19,6 +21,7 @@ export const DEFAULT_MESSENGER_CONTEXT: MessengerContextType = Object.freeze({
   unreadCount: 0,
   presenceMap: Object.freeze({}),
   isConnected: false,
+  admittedRoom: null,
   sendTyping: () => undefined,
   sendJoin: () => undefined,
   sendLeave: () => undefined,

@@ -137,14 +137,16 @@ const missedMessage: Message = {
 
 let exposeMissedMessage = false
 let isTransportConnected = false
+let observedAdmittedRoom: string | null = null
 let originalWebSocket: PropertyDescriptor | undefined
 let originalOnline: PropertyDescriptor | undefined
 
 function ConnectionProbe() {
-  const { isConnected } = useMessenger()
+  const { isConnected, admittedRoom } = useMessenger()
   useEffect(() => {
     isTransportConnected = isConnected
-  }, [isConnected])
+    observedAdmittedRoom = admittedRoom ?? null
+  }, [isConnected, admittedRoom])
   return null
 }
 
@@ -171,13 +173,17 @@ function createWrapper() {
 
 const framesOfType = (socket: ControlledWebSocket, type: string) =>
   socket.sent
-    .map((value) => JSON.parse(value) as { type: string; room?: string })
+    .map(
+      (value) =>
+        JSON.parse(value) as { type: string; room?: string; payload?: { admission_nonce: string } }
+    )
     .filter((frame) => frame.type === type)
 
 beforeEach(() => {
   mocks.chatId = "chat-current"
   exposeMissedMessage = false
   isTransportConnected = false
+  observedAdmittedRoom = null
   ControlledWebSocket.instances = []
   originalWebSocket = Object.getOwnPropertyDescriptor(globalThis, "WebSocket")
   originalOnline = Object.getOwnPropertyDescriptor(navigator, "onLine")
@@ -435,6 +441,7 @@ it("reconciles a delivered replay record and a REST-only tail after an untyped c
       type: "join",
       room,
       resume_token: "resume-before-delivery",
+      payload: { admission_nonce: expect.stringMatching(/^[0-9a-f]{32}$/) },
     })
 
     // These UUID fields cross the real parser; the client treats the server's
@@ -489,7 +496,12 @@ it("reconciles a delivered replay record and a REST-only tail after an untyped c
     await waitFor(() => expect(isTransportConnected).toBe(true))
     await waitFor(() => expect(recoveryRequested).toBe(true))
     expect(framesOfType(replacement, "join")).toEqual([
-      { type: "join", room, resume_token: "resume-after-delivery" },
+      {
+        type: "join",
+        room,
+        resume_token: "resume-after-delivery",
+        payload: { admission_nonce: expect.stringMatching(/^[0-9a-f]{32}$/) },
+      },
     ])
     expect(session.result.current.controller.messages.map(({ id }) => id)).toEqual([delivered.id])
 
@@ -789,3 +801,75 @@ for (const transition of ["room", "account"] as const) {
     }
   })
 }
+
+it("keeps HTTP message sending available while a legacy hub has not acknowledged a room", async () => {
+  const room = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  const previousRoom = chat.id
+  chat.id = room
+  initialMessage.chat_id = room
+  missedMessage.chat_id = room
+  mocks.chatId = room
+  try {
+    const session = renderHook(() => useMessengerController(), { wrapper: createWrapper() })
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+    const socket = ControlledWebSocket.instances[0]!
+    await act(async () => socket.open())
+    const join = framesOfType(socket, "join").at(-1) as { payload?: { admission_nonce: string } }
+    expect(join.payload?.admission_nonce).toMatch(/^[0-9a-f]{32}$/)
+    let delivered = false
+    await act(async () => {
+      delivered = await session.result.current.handleSendMessage("synthetic", [])
+    })
+    expect(delivered).toBe(true)
+    expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+      room,
+      "synthetic",
+      [],
+      undefined,
+      expect.any(String)
+    )
+    session.unmount()
+  } finally {
+    chat.id = previousRoom
+    initialMessage.chat_id = previousRoom
+    missedMessage.chat_id = previousRoom
+    mocks.chatId = previousRoom
+  }
+})
+
+it("publishes confirmed membership through the real MessengerProvider without fetching history again", async () => {
+  const room = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  const previousRoom = chat.id
+  chat.id = room
+  initialMessage.chat_id = room
+  missedMessage.chat_id = room
+  mocks.chatId = room
+  try {
+    const session = renderHook(() => useMessengerController(), { wrapper: createWrapper() })
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+    const socket = ControlledWebSocket.instances[0]!
+    await act(async () => socket.open())
+    await waitFor(() => expect(session.result.current.messagesLoading).toBe(false))
+    const before = mocks.chatApi.getMessages.mock.calls.length
+    const join = framesOfType(socket, "join").at(-1)
+    expect(join?.payload?.admission_nonce).toMatch(/^[0-9a-f]{32}$/)
+    expect(observedAdmittedRoom).toBeNull()
+    await act(async () =>
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "room_admitted",
+          room,
+          nonce: join?.payload?.admission_nonce,
+        }),
+      } as MessageEvent)
+    )
+    await waitFor(() => expect(observedAdmittedRoom).toBe(room))
+    expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(before)
+    session.unmount()
+  } finally {
+    chat.id = previousRoom
+    initialMessage.chat_id = previousRoom
+    missedMessage.chat_id = previousRoom
+    mocks.chatId = previousRoom
+  }
+})

@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/quic-go/webtransport-go"
@@ -440,9 +441,10 @@ func isValidHeartbeatNonce(nonce string) bool {
 }
 
 type joinPayload struct {
-	ResumeToken string `json:"resume_token,omitempty"`
-	LastSeq     uint64 `json:"last_seq,omitempty"`
-	LastMsgID   string `json:"last_msg_id,omitempty"`
+	ResumeToken    string          `json:"resume_token,omitempty"`
+	LastSeq        uint64          `json:"last_seq,omitempty"`
+	LastMsgID      string          `json:"last_msg_id,omitempty"`
+	AdmissionNonce json.RawMessage `json:"admission_nonce,omitempty"`
 }
 
 func mergeTopLevelJoinReplay(msg *Message, data []byte) {
@@ -460,6 +462,11 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			return
 		}
+	}
+	// The merge canonicalizes JSON, so reject an ambiguous opt-in before it can
+	// lose duplicate or unknown keys. Existing replay parsing is unchanged.
+	if len(payload.AdmissionNonce) > 0 && admissionNonce(msg.Payload) == "" {
+		payload.AdmissionNonce = nil
 	}
 	if payload.LastSeq == 0 {
 		payload.LastSeq = topLevel.LastSeq
@@ -508,6 +515,90 @@ func (c *Client) handleJoin(ctx context.Context, msg Message) {
 		return
 	}
 	c.finishAuthorizedRoomJoin(ctx, msg, decision)
+	if !decision.reconnectOnReject && !decision.replayUnavailable &&
+		!decision.replayLimited && decision.tokenErr == nil &&
+		(!decision.legacyCursor || decision.resumeToken != "") &&
+		(!decision.replayEnabled || decision.replayState != nil) {
+		c.sendAdmissionAck(ctx, msg.Room, admissionNonce(msg.Payload))
+	}
+}
+
+// admissionNonce is an opt-in parser only: unknown or malformed fields do not
+// change the existing join path. A replay join may carry the established fields.
+func admissionNonce(payload json.RawMessage) string {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	open, err := decoder.Token()
+	if err != nil || open != json.Delim('{') {
+		return ""
+	}
+	seen := make(map[string]bool, 4)
+	var nonce string
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return ""
+		}
+		key, ok := keyToken.(string)
+		if !ok || seen[key] {
+			return ""
+		}
+		seen[key] = true
+		if !decodeAdmissionValue(decoder, key, &nonce) {
+			return ""
+		}
+	}
+	closeObject, err := decoder.Token()
+	if err != nil || closeObject != json.Delim('}') {
+		return ""
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF || !isValidHeartbeatNonce(nonce) {
+		return ""
+	}
+	var parsed joinPayload
+	if json.Unmarshal(payload, &parsed) != nil {
+		return ""
+	}
+	return nonce
+}
+
+func decodeAdmissionValue(decoder *json.Decoder, key string, nonce *string) bool {
+	switch key {
+	case "admission_nonce":
+		return decoder.Decode(nonce) == nil
+	case "resume_token", "last_seq", "last_msg_id":
+		var ignored json.RawMessage
+		return decoder.Decode(&ignored) == nil
+	default:
+		return false
+	}
+}
+
+// ACK is requester-only, room-scoped and sent only after the existing membership
+// and revocation checks. It does not assert that replay catch-up has finished.
+func (c *Client) sendAdmissionAck(ctx context.Context, room, nonce string) {
+	if !isValidHeartbeatNonce(nonce) || c.Hub == nil || len(room) != 36 {
+		return
+	}
+	if _, err := uuid.Parse(room); err != nil {
+		return
+	}
+	lock := c.Hub.roomMembershipLock(c.UserID, room)
+	lock.Lock()
+	defer lock.Unlock()
+	entry := lock.entry
+	if entry.revocations > 0 || entry.mutationPending || entry.drainFailedClosed.Load() ||
+		c.Hub.AdmissionClosed() || !c.roomJoinContextActive(ctx) || !c.Hub.isRoomMember(room, c) {
+		return
+	}
+	frame, err := json.Marshal(struct {
+		Type  string `json:"type"`
+		Room  string `json:"room"`
+		Nonce string `json:"nonce"`
+	}{Type: "room_admitted", Room: room, Nonce: nonce})
+	if err == nil {
+		_ = safeSend(c.Send, frame)
+	}
 }
 
 func (c *Client) prepareAuthorizedRoomJoin(

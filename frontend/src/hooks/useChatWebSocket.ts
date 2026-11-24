@@ -23,6 +23,12 @@ import api from "@/api/client"
 import { getDatabaseLazily } from "@/db/lazy"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
+  getServerSessionIdentitySnapshot,
+  getSessionIdentitySnapshot,
+  isCurrentBrowserSession,
+  subscribeSessionIdentity,
+} from "@/stores/sessionEpoch"
+import {
   applyOwnReactionFrame,
   classifyMessengerServerEdit,
   confirmMessengerServerEdit,
@@ -97,10 +103,13 @@ function createHeartbeatNonce(): string {
     .join("")
 }
 
-function joinFrame(chatId: string, checkpoint: ReplayCheckpoint | undefined) {
-  return checkpoint === undefined
-    ? { type: "join", room: chatId }
-    : { type: "join", room: chatId, resume_token: checkpoint.resumeToken }
+function joinFrame(chatId: string, checkpoint: ReplayCheckpoint | undefined, nonce?: string) {
+  return {
+    type: "join",
+    room: chatId,
+    ...(checkpoint === undefined ? {} : { resume_token: checkpoint.resumeToken }),
+    ...(nonce === undefined ? {} : { payload: { admission_nonce: nonce } }),
+  }
 }
 
 export function rememberLiveMessage(
@@ -300,6 +309,7 @@ export function applyReactionChangedFrame(
 
 export interface UseChatWebSocketOptions {
   enabled?: boolean
+  roomAdmission?: boolean
   // Wave 204 SW4 — the current user's id, used to drop self-echoes: the
   // NATS→ws-hub→room fan-out (W204 SW2) has no per-recipient exclusion, so the
   // sender receives its own new_message/read frame back. Threaded from useAuth
@@ -379,6 +389,7 @@ function useConstant<T>(create: () => T): T {
 
 export function useChatWebSocket({
   enabled = true,
+  roomAdmission = false,
   currentUserId,
   // Absent callbacks default to a no-op so every event can invoke its handler.
   onNewMessage = noop,
@@ -410,6 +421,25 @@ export function useChatWebSocket({
   // required for server-rendered content" at module evaluation time.
   const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)
 
+  const sessionIdentity = useSyncExternalStore(
+    subscribeSessionIdentity,
+    getSessionIdentitySnapshot,
+    getServerSessionIdentitySnapshot
+  )
+  const [admission, setAdmission] = useState<{
+    room: string
+    identity: string
+    userId: string | undefined
+  } | null>(null)
+  // Membership is scoped to the current browser identity and does not attest
+  // that resume replay has finished.
+  const admittedRoom =
+    enabled &&
+    roomAdmission &&
+    admission?.userId === currentUserId &&
+    admission?.identity === sessionIdentity
+      ? admission.room
+      : null
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   // Timer ownership must not depend on React executing a state updater during cleanup.
   const typingUsersRef = useRef<Map<string, TypingUser>>(new Map())
@@ -432,6 +462,20 @@ export function useChatWebSocket({
   // ws-hub room membership is per-connection).
   const currentUserIdRef = useRef(currentUserId)
   const transportEnabledRef = useRef(enabled)
+  const roomAdmissionEnabledRef = useRef(roomAdmission)
+  const socketAdmissionRef = useRef<{
+    socket: WebSocket
+    identity: string
+    nonces: Set<string>
+  } | null>(null)
+  const admissionAttemptRef = useRef<{
+    socket: WebSocket
+    room: string
+    nonce: string
+    identity: string
+    sent: boolean
+    accepted: boolean
+  } | null>(null)
   // Changes only at account boundaries, not ordinary reconnects of the same account.
   const accountEpochRef = useRef(0)
   const lastConnectedAccountEpochRef = useRef<number | null>(null)
@@ -517,8 +561,13 @@ export function useChatWebSocket({
 
   // Invalidate old-account callbacks during commit, before passive reconnect effects.
   useIsomorphicLayoutEffect(() => {
+    if ((!enabled || !roomAdmission) && admissionAttemptRef.current !== null) {
+      admissionAttemptRef.current = null
+      setAdmission(null)
+    }
     if (seenMessageSessionRef.current !== currentUserId) {
       accountEpochRef.current += 1
+      setAdmission(null)
       clearReplayCheckpoints(seenMessageSessionRef.current)
       seenMessageIdsRef.current.clear()
       replayRestRecoveryRef.clear()
@@ -537,6 +586,7 @@ export function useChatWebSocket({
     onAuthErrorRef.current = onAuthError
     currentUserIdRef.current = currentUserId
     transportEnabledRef.current = enabled
+    roomAdmissionEnabledRef.current = roomAdmission
   })
 
   useIsomorphicLayoutEffect(() => {
@@ -557,7 +607,60 @@ export function useChatWebSocket({
         checkpoint = readAndTouchReplayCheckpoint(currentUserIdRef.current, room)
       ) => {
         lastResumeJoinRef.current = null
-        ws.send(JSON.stringify(joinFrame(room, checkpoint)))
+        admissionAttemptRef.current = null
+        setAdmission(null)
+        const socketAdmission = socketAdmissionRef.current
+        let nonce: string | undefined
+        if (
+          roomAdmissionEnabledRef.current &&
+          currentUserIdRef.current &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room) &&
+          socketAdmission?.socket === ws &&
+          socketAdmission.nonces.size < 64 &&
+          socketAdmission.identity === getSessionIdentitySnapshot() &&
+          isCurrentBrowserSession()
+        ) {
+          try {
+            const candidate = createHeartbeatNonce()
+            if (
+              !socketAdmission.nonces.has(candidate) &&
+              socketAdmission.identity === getSessionIdentitySnapshot() &&
+              isCurrentBrowserSession()
+            ) {
+              socketAdmission.nonces.add(candidate)
+              nonce = candidate
+            }
+          } catch {
+            // Preserve the old join when secure nonce generation is unavailable.
+          }
+        }
+        if (
+          wsRef.current !== ws ||
+          activeRoomRef.current !== room ||
+          !mountedRef.current ||
+          !transportEnabledRef.current ||
+          socketAccountEpochRef.current !== accountEpochRef.current
+        )
+          return
+        const attempt =
+          nonce === undefined || !socketAdmission
+            ? null
+            : {
+                socket: ws,
+                room,
+                nonce,
+                identity: socketAdmission.identity,
+                sent: false,
+                accepted: false,
+              }
+        admissionAttemptRef.current = attempt
+        try {
+          ws.send(JSON.stringify(joinFrame(room, checkpoint, nonce)))
+        } catch (error) {
+          if (admissionAttemptRef.current === attempt) admissionAttemptRef.current = null
+          throw error
+        }
+        if (attempt && admissionAttemptRef.current === attempt) attempt.sent = true
         if (checkpoint !== undefined) {
           lastResumeJoinRef.current = { socket: ws, room, checkpoint }
         }
@@ -580,6 +683,9 @@ export function useChatWebSocket({
 
   const cleanup = useConstant(() => () => {
     lastResumeJoinRef.current = null
+    admissionAttemptRef.current = null
+    socketAdmissionRef.current = null
+    setAdmission(null)
     clearTimeout(reconnectTimeoutRef.current)
     reconnectTimeoutRef.current = undefined
     heartbeatCleanupRef.current?.()
@@ -637,6 +743,7 @@ export function useChatWebSocket({
 
   const connect = useCallback(() => {
     const accountEpoch = accountEpochRef.current
+    const admissionIdentity = getSessionIdentitySnapshot()
     const ownsAccount = () =>
       mountedRef.current &&
       currentUserIdRef.current === currentUserId &&
@@ -744,6 +851,7 @@ export function useChatWebSocket({
         const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
         wsRef.current = ws
         socketAccountEpochRef.current = accountEpoch
+        socketAdmissionRef.current = { socket: ws, identity: admissionIdentity, nonces: new Set() }
         const ownsTransport = () => ownsSession() && wsRef.current === ws
         let pendingHeartbeatNonce: string | null = null
         let heartbeatInterval: ReturnType<typeof setInterval> | undefined
@@ -947,6 +1055,29 @@ export function useChatWebSocket({
             }
 
             switch (validated.type) {
+              case "room_admitted": {
+                const attempt = admissionAttemptRef.current
+                if (
+                  !attempt?.sent ||
+                  attempt.accepted ||
+                  attempt.socket !== ws ||
+                  activeRoomRef.current !== attempt.room ||
+                  !roomAdmissionEnabledRef.current ||
+                  attempt.identity !== getSessionIdentitySnapshot() ||
+                  !isCurrentBrowserSession() ||
+                  attempt.room !== validated.room ||
+                  attempt.nonce !== validated.nonce
+                )
+                  break
+                attempt.accepted = true
+                setAdmission({
+                  room: attempt.room,
+                  identity: attempt.identity,
+                  userId: currentUserId,
+                })
+                break
+              }
+
               case "heartbeat_pong": {
                 if (pendingHeartbeatNonce !== validated.nonce) break
                 clearTimeout(heartbeatAckTimeout)
@@ -1287,6 +1418,8 @@ export function useChatWebSocket({
               }
 
               case "rate_limit_exceeded": {
+                admissionAttemptRef.current = null
+                setAdmission(null)
                 const resume = lastResumeJoinRef.current
                 const checkpoint =
                   resume === null ? undefined : peekReplayCheckpoint(currentUserId, resume.room)
@@ -1305,6 +1438,13 @@ export function useChatWebSocket({
               }
 
               case "error":
+                if (
+                  validated.room === undefined ||
+                  validated.room === admissionAttemptRef.current?.room
+                ) {
+                  admissionAttemptRef.current = null
+                  setAdmission(null)
+                }
                 if (validated.code === "replay_join_rate_limited" && validated.room !== undefined) {
                   scheduleReplayJoinRetry(validated.room)
                 } else if (
@@ -1497,6 +1637,8 @@ export function useChatWebSocket({
 
   const sendLeave = useConstant(() => (roomId: string) => {
     if (activeRoomRef.current === roomId) {
+      admissionAttemptRef.current = null
+      setAdmission(null)
       activeRoomRef.current = null
       replayRejectionRef.current = null
     }
@@ -1524,6 +1666,7 @@ export function useChatWebSocket({
 
   return {
     isConnected,
+    admittedRoom,
     sendTyping,
     sendJoin,
     sendLeave,

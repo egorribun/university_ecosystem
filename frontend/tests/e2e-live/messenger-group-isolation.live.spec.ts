@@ -1,4 +1,5 @@
 import { devices, type BrowserContext, type Page } from "@playwright/test"
+import { createRoomAdmissionObserver } from "./messenger-room-admission"
 import {
   createGroupHeartbeatObservation,
   groupPongBeforeSend,
@@ -38,6 +39,7 @@ type SocketObservation = {
     groupEvents: GroupMessageEvent[]
     closed: () => boolean
     heartbeat: ReturnType<typeof createGroupHeartbeatObservation>
+    admission: ReturnType<typeof createRoomAdmissionObserver>
   }[]
 }
 function parseFrame(frame: { payload: string | Buffer }): unknown {
@@ -128,6 +130,7 @@ function observeSocket(page: Page): SocketObservation {
       groupEvents: [],
       closed: () => socket.isClosed(),
       heartbeat: createGroupHeartbeatObservation(),
+      admission: createRoomAdmissionObserver(),
     }
     observation.sessions.push(session)
     socket.on("framesent", (frame) => {
@@ -136,6 +139,7 @@ function observeSocket(page: Page): SocketObservation {
       observation.roomJoins.push(...joins)
       session.roomJoins.push(...joins)
       session.heartbeat.sent(value, session.roomJoins)
+      session.admission.sent(value)
       if (
         isRecord(value) &&
         typeof value.resume_token === "string" &&
@@ -147,12 +151,29 @@ function observeSocket(page: Page): SocketObservation {
     socket.on("framereceived", (frame) => {
       const value = parseFrame(frame)
       session.heartbeat.received(value)
+      session.admission.received(value)
       const events = findGroupMessageEvents(value)
       observation.groupEvents.push(...events)
       session.groupEvents.push(...events)
     })
   })
   return observation
+}
+function currentAdmission(observation: SocketObservation, room: string) {
+  const session = observation.sessions.at(-1)
+  if (!session || session.closed()) return null
+  const attempt = session.admission.snapshot(room)
+  return attempt === null ? null : { session, attempt }
+}
+function admissionStillCurrent(
+  observation: SocketObservation,
+  receipt: NonNullable<ReturnType<typeof currentAdmission>>
+) {
+  return (
+    observation.sessions.at(-1) === receipt.session &&
+    !receipt.session.closed() &&
+    receipt.session.admission.isCurrent(receipt.attempt)
+  )
 }
 function eventsForMessage(
   observation: SocketObservation,
@@ -353,16 +374,24 @@ test.describe("live messenger group isolation", () => {
       await expect(ownerLog).toBeVisible()
       await expect(teacherLog).toBeVisible()
       await expect(secondMemberLog).toBeVisible()
+      // A sent join is not membership. Each recipient must receive the matching
+      // direct ACK on its latest open socket before the sender's HTTP POST.
       await expect
-        .poll(() => teacherSocket.roomJoins.filter((room) => room === chatId).length)
-        .toBeGreaterThan(0)
-      await expect
-        .poll(() => secondMemberSocket.roomJoins.filter((room) => room === chatId).length)
-        .toBeGreaterThan(0)
+        .poll(
+          () =>
+            currentAdmission(teacherSocket, chatId) !== null &&
+            currentAdmission(secondMemberSocket, chatId) !== null
+        )
+        .toBe(true)
       await expect
         .poll(() => nonMemberSocket.roomJoins.filter((room) => room === chatId).length)
         .toBeGreaterThan(0)
 
+      const teacherAdmission = currentAdmission(teacherSocket, chatId)
+      const secondMemberAdmission = currentAdmission(secondMemberSocket, chatId)
+      if (!teacherAdmission || !secondMemberAdmission) {
+        throw new Error("Recipient admission changed before send")
+      }
       const message = `live-group-ws-${crypto.randomUUID()}`
       const messageResponsePromise = page.waitForResponse((response) => {
         const request = response.request()
@@ -378,9 +407,13 @@ test.describe("live messenger group isolation", () => {
         secondMember: secondMemberSocket,
       }
       const pongBeforeSend = groupPongBeforeSend(deliveryObservers, chatId)
+      expect(admissionStillCurrent(teacherSocket, teacherAdmission)).toBe(true)
+      expect(admissionStillCurrent(secondMemberSocket, secondMemberAdmission)).toBe(true)
       await page.locator("#chat-send-btn").click()
       const messageResponse = await messageResponsePromise
       expect(messageResponse.ok()).toBe(true)
+      expect(admissionStillCurrent(teacherSocket, teacherAdmission)).toBe(true)
+      expect(admissionStillCurrent(secondMemberSocket, secondMemberAdmission)).toBe(true)
       const sentMessage = (await messageResponse.json()) as { id: string; content: string }
       expect(sentMessage.content).toBe(message)
 
