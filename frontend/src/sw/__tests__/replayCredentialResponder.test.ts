@@ -1,14 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const ensureCsrfCookie = vi.hoisted(() => vi.fn(async () => undefined))
+const forceRefreshCsrfCookie = vi.hoisted(() => vi.fn(async (_signal?: AbortSignal) => true))
 vi.mock("@/api/client", () => ({ ensureCsrfCookie }))
+vi.mock("@/api/csrfRecovery", () => ({ forceRefreshCsrfCookie }))
 
 import {
   acceptBrowserSessionGeneration,
   getBrowserSessionGeneration,
   rotateBrowserSession,
 } from "@/stores/sessionEpoch"
-import { REQUEST_OFFLINE_REPLAY_CREDENTIALS } from "../replayCredentials"
+import {
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS,
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+} from "../replayCredentials"
 import {
   currentReplaySessionNonce,
   installReplayCredentialResponder,
@@ -48,6 +53,19 @@ function requestFrom(source: unknown, ports: MessagePort[]): Record<string, unkn
   }
 }
 
+function refreshedRequestFrom(
+  source: unknown,
+  ports: MessagePort[],
+  sessionNonce: string | null,
+  expiresAt = Date.now() + 9_000
+): Record<string, unknown> {
+  return {
+    data: { type: REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2, version: 2, sessionNonce, expiresAt },
+    source,
+    ports,
+  }
+}
+
 function setCsrfCookie(value: string) {
   document.cookie = `csrf_token=${value}; path=/`
 }
@@ -72,9 +90,12 @@ describe("AUD-375: window answers replay credentials only for the live session",
     controller = { state: "activated" }
     ensureCsrfCookie.mockReset()
     ensureCsrfCookie.mockResolvedValue(undefined)
+    forceRefreshCsrfCookie.mockReset()
+    forceRefreshCsrfCookie.mockResolvedValue(true)
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     clearCsrfCookie()
     localStorage.clear()
     acceptBrowserSessionGeneration()
@@ -238,5 +259,201 @@ describe("AUD-375: window answers replay credentials only for the live session",
 
     localStorage.setItem(GENERATION_KEY, JSON.stringify({ nonce: "foreign-session", hash: null }))
     expect(currentReplaySessionNonce()).toBeNull()
+  })
+
+  it("forces bootstrap for the same session before sending a versioned acknowledgment", async () => {
+    const nonce = verifiedSession()
+    setCsrfCookie("old-token")
+    forceRefreshCsrfCookie.mockImplementationOnce(async () => {
+      setCsrfCookie("new-token")
+      return true
+    })
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce))
+
+    await vi.waitFor(() =>
+      expect(channel.answers).toEqual([{ version: 2, csrfToken: "new-token", sessionNonce: nonce }])
+    )
+    expect(forceRefreshCsrfCookie).toHaveBeenCalledOnce()
+    expect(ensureCsrfCookie).not.toHaveBeenCalled()
+    channel.close()
+  })
+
+  it("refuses a forced request for another session before bootstrap", async () => {
+    verifiedSession()
+    setCsrfCookie("old-token")
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], "other-session"))
+
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    expect(forceRefreshCsrfCookie).not.toHaveBeenCalled()
+    channel.close()
+  })
+
+  it("ignores a forced request with an unsupported protocol version", async () => {
+    const nonce = verifiedSession()
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch({
+      data: {
+        type: REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+        version: 1,
+        sessionNonce: nonce,
+        expiresAt: Date.now() + 9_000,
+      },
+      source: controller,
+      ports: [channel.port],
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(channel.answers).toEqual([])
+    expect(forceRefreshCsrfCookie).not.toHaveBeenCalled()
+    channel.close()
+  })
+
+  it("does not start a bootstrap after the worker's request deadline", async () => {
+    const nonce = verifiedSession()
+    setCsrfCookie("old-token")
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce, Date.now() - 1))
+
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    expect(forceRefreshCsrfCookie).not.toHaveBeenCalled()
+    channel.close()
+  })
+
+  it.each([undefined, "invalid", NaN, Infinity])(
+    "refuses an invalid forced request deadline (%s)",
+    async (expiresAt) => {
+      const nonce = verifiedSession()
+      setCsrfCookie("old-token")
+      const { container, dispatch } = fakeContainer(controller)
+      installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+      const channel = answerChannel()
+
+      dispatch({
+        data: {
+          type: REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+          version: 2,
+          sessionNonce: nonce,
+          expiresAt,
+        },
+        source: controller,
+        ports: [channel.port],
+      })
+
+      await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+      expect(forceRefreshCsrfCookie).not.toHaveBeenCalled()
+      channel.close()
+    }
+  )
+
+  it("refuses a success that settles after the worker's request deadline", async () => {
+    const nonce = verifiedSession()
+    setCsrfCookie("old-token")
+    let now = Date.now()
+    const expiresAt = now + 100
+    vi.spyOn(Date, "now").mockImplementation(() => now)
+    forceRefreshCsrfCookie.mockImplementationOnce(async () => {
+      setCsrfCookie("new-token")
+      now = expiresAt + 1
+      return true
+    })
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce, expiresAt))
+
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    channel.close()
+  })
+
+  it("refuses a successful bootstrap that does not provide a cookie", async () => {
+    const nonce = verifiedSession()
+    clearCsrfCookie()
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce))
+
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    channel.close()
+  })
+
+  it.each([false, "throws"])("refuses a failed bootstrap (%s)", async (result) => {
+    const nonce = verifiedSession()
+    setCsrfCookie("old-token")
+    if (result === "throws") forceRefreshCsrfCookie.mockRejectedValueOnce(new Error("unavailable"))
+    else forceRefreshCsrfCookie.mockResolvedValueOnce(false)
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce))
+
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    channel.close()
+  })
+
+  it.each(["session", "controller"])(
+    "refuses when the %s changes during bootstrap",
+    async (change) => {
+      const nonce = verifiedSession()
+      setCsrfCookie("old-token")
+      const { container, dispatch } = fakeContainer(controller)
+      forceRefreshCsrfCookie.mockImplementationOnce(async () => {
+        setCsrfCookie("new-token")
+        if (change === "session") rotateBrowserSession()
+        else container.controller = null
+        return true
+      })
+      installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+      const channel = answerChannel()
+
+      dispatch(refreshedRequestFrom(controller, [channel.port], nonce))
+
+      await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+      channel.close()
+    }
+  )
+
+  it("aborts an overdue bootstrap and does not send a late success", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    const nonce = verifiedSession()
+    setCsrfCookie("old-token")
+    let signal: AbortSignal | undefined
+    let release!: (value: boolean) => void
+    forceRefreshCsrfCookie.mockImplementationOnce((requestSignal) => {
+      signal = requestSignal
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    })
+    const { container, dispatch } = fakeContainer(controller)
+    installReplayCredentialResponder(container as unknown as ServiceWorkerContainer)
+    const channel = answerChannel()
+
+    dispatch(refreshedRequestFrom(controller, [channel.port], nonce))
+    await vi.advanceTimersByTimeAsync(9_000)
+    vi.useRealTimers()
+    await vi.waitFor(() => expect(channel.answers).toEqual([null]))
+    expect(signal?.aborted).toBe(true)
+    release(true)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(channel.answers).toEqual([null])
+    channel.close()
   })
 })

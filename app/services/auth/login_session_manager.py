@@ -100,8 +100,6 @@ class LoginSessionManager:
 
         from app.core.csrf import signal_csrf_rotation
 
-        signal_csrf_rotation(request)
-
         bg_tasks.add_task(
             self.record_login_history_bg,
             user.id,
@@ -130,9 +128,11 @@ class LoginSessionManager:
         )
         metrics.record_login_success(method=method)
 
-        return await self.build_token_response(
+        result = await self.build_token_response(
             user, token, session, db_session, include_token=False
         )
+        signal_csrf_rotation(request, session_id=str(session.jti))
+        return result
 
     async def build_token_response(
         self,

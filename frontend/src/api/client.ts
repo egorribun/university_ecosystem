@@ -5,6 +5,7 @@ import axios, {
 } from "axios"
 import { client as generatedClient } from "@/api/generated/client.gen"
 import { resolveSsrBackendOrigin } from "./backendOrigin"
+import { CSRF_REJECTED_HEADER, forceRefreshCsrfCookie } from "./csrfRecovery"
 import {
   getBrowserSessionGeneration,
   getSessionEpoch,
@@ -191,6 +192,127 @@ export const getRetryDelay = (headers: Record<string, unknown> | undefined): num
 // idempotency key handles this server-side, but the duplicate still wastes bandwidth.
 // We suppress the duplicate on the client by tracking in-flight Idempotency-Keys.
 const _inflightIdempotencyKeys = new Set<string>()
+const _csrfRecoveryOwners = new Map<string, () => string>()
+const _csrfFormSnapshots = new WeakSet<() => FormData>()
+const _csrfLoginForms = new WeakSet<() => boolean>()
+const _csrfRecoveryPermits = new WeakSet<() => void>()
+
+type CsrfRecoveryConfig = InternalAxiosRequestConfig &
+  ApiRequestConfig & {
+    __csrfRecoveryAttempted?: boolean
+    __csrfRecoveryOwner?: () => string
+    __csrfFormSnapshot?: () => FormData
+    __csrfLoginForm?: () => boolean
+    __csrfRecoveryPermit?: () => void
+  }
+
+const hasReadableCsrfCookie = (): boolean => {
+  try {
+    const value = /(?:^|;\s*)csrf_token=([^;]*)/u.exec(document.cookie)?.[1]
+    return Boolean(value && decodeURIComponent(value))
+  } catch {
+    return false
+  }
+}
+
+const hasDefaultRequestTransforms = (config: InternalAxiosRequestConfig): boolean => {
+  const current = Array.isArray(config.transformRequest)
+    ? config.transformRequest
+    : [config.transformRequest]
+  const standard = Array.isArray(axios.defaults.transformRequest)
+    ? axios.defaults.transformRequest
+    : [axios.defaults.transformRequest]
+  return (
+    current.length === standard.length && current.every((transform, i) => transform === standard[i])
+  )
+}
+
+const snapshotFormData = (data: FormData): (() => FormData) | undefined => {
+  if (typeof File === "undefined" || typeof data.entries !== "function") return
+  const entries = Array.from(data.entries())
+  if (entries.some(([, value]) => typeof value !== "string" && !(value instanceof File))) return
+  return () => {
+    const copy = new FormData()
+    for (const [name, value] of entries) {
+      if (typeof value === "string") copy.append(name, value)
+      else copy.append(name, value, value.name)
+    }
+    return copy
+  }
+}
+
+const csrfReplayBody = (config: CsrfRecoveryConfig): (() => unknown) | undefined => {
+  if (!hasDefaultRequestTransforms(config)) return
+  const body: unknown = config.data
+  if (body === undefined || body === null) return () => body
+  if (body instanceof FormData) {
+    const snapshot = config.__csrfFormSnapshot
+    return snapshot && _csrfFormSnapshots.has(snapshot) ? snapshot : undefined
+  }
+  if (typeof body !== "string") return
+  const contentType = AxiosHeaders.from(config.headers).get("Content-Type")
+  if (typeof contentType !== "string") return
+  const separator = contentType.indexOf(";")
+  const mediaType = (separator < 0 ? contentType : contentType.slice(0, separator))
+    .trim()
+    .toLowerCase()
+  if (mediaType === "application/x-www-form-urlencoded") {
+    const loginForm = config.__csrfLoginForm
+    const requestUrl = new URL(api.getUri(config), window.location.origin)
+    if (
+      loginForm &&
+      _csrfLoginForms.has(loginForm) &&
+      requestUrl.pathname === "/api/v1/auth/login" &&
+      requestUrl.search === ""
+    )
+      return () => body
+    return
+  }
+  if (
+    mediaType !== "application/json" &&
+    !(mediaType.startsWith("application/") && mediaType.endsWith("+json"))
+  )
+    return
+  try {
+    JSON.parse(body)
+    return () => body
+  } catch {
+    return
+  }
+}
+
+const isTrustedCsrfResponse = (config: CsrfRecoveryConfig, error: unknown): boolean => {
+  if (isSsrRuntime || !config.url) return false
+  const candidate = error as {
+    request?: { responseURL?: unknown; redirected?: unknown }
+    response?: { redirected?: unknown; request?: { responseURL?: unknown; redirected?: unknown } }
+  }
+  if (
+    candidate.response?.redirected === true ||
+    candidate.response?.request?.redirected === true ||
+    candidate.request?.redirected === true
+  )
+    return false
+  const responseUrl = candidate.response?.request?.responseURL ?? candidate.request?.responseURL
+  if (typeof responseUrl !== "string" || responseUrl.length === 0) return false
+  try {
+    const requested = new URL(api.getUri(config), window.location.origin)
+    const received = new URL(responseUrl)
+    requested.hash = "" // Fragments are never sent in the HTTP request.
+    return (
+      requested.origin === window.location.origin &&
+      (requested.pathname.startsWith("/api/v1/") ||
+        (config.method === "post" && requested.pathname === "/ws/ticket" && !requested.search)) &&
+      requested.href === received.href &&
+      !requested.username &&
+      !requested.password &&
+      !received.username &&
+      !received.password
+    )
+  } catch {
+    return false
+  }
+}
 
 // TD-31-04: Synchronize in-flight idempotency keys across tabs via BroadcastChannel.
 // Prevents duplicate mutations when two tabs submit the same form simultaneously.
@@ -607,7 +729,7 @@ const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void =
 }
 
 api.interceptors.request.use(async (config) => {
-  const candidate = config as InternalAxiosRequestConfig & ApiRequestConfig
+  const candidate = config as CsrfRecoveryConfig
 
   // Bind every browser request before its first asynchronous preflight. The
   // closure reads the shared generation so an old tab cannot dispatch with a
@@ -639,14 +761,51 @@ api.interceptors.request.use(async (config) => {
   // failed-rotation receipt retains live-network auth behavior.
   if (!isSsrRuntime) assertCurrentRequestSession(config)
 
+  // Keep the sent multipart fields reproducible even if their caller later
+  // changes the original FormData while the first request is in flight.
+  if (
+    !isSsrRuntime &&
+    !candidate.__csrfRecoveryAttempted &&
+    ["post", "put", "patch", "delete"].includes(config.method ?? "") &&
+    config.data instanceof FormData &&
+    hasDefaultRequestTransforms(config)
+  ) {
+    const snapshot = snapshotFormData(config.data)
+    if (snapshot) {
+      _csrfFormSnapshots.add(snapshot)
+      candidate.__csrfFormSnapshot = snapshot
+      config.data = snapshot()
+    }
+  }
+  if (
+    !isSsrRuntime &&
+    !candidate.__csrfRecoveryAttempted &&
+    config.method === "post" &&
+    config.data instanceof URLSearchParams &&
+    hasDefaultRequestTransforms(config)
+  ) {
+    const loginForm = () => true
+    _csrfLoginForms.add(loginForm)
+    candidate.__csrfLoginForm = loginForm
+    config.data = new URLSearchParams(config.data)
+  }
+
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
   if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {
     const requestHeaders = AxiosHeaders.from(config.headers ?? {})
     const idempotencyKey = requestHeaders.get("Idempotency-Key") as string | undefined
-    if (idempotencyKey && _inflightIdempotencyKeys.has(idempotencyKey)) {
+    const owner = candidate.__csrfRecoveryOwner
+    const ownsReservation = Boolean(
+      owner && idempotencyKey && _csrfRecoveryOwners.get(idempotencyKey) === owner
+    )
+    if (
+      idempotencyKey &&
+      (_inflightIdempotencyKeys.has(idempotencyKey) || _csrfRecoveryOwners.has(idempotencyKey)) &&
+      !ownsReservation
+    ) {
       return Promise.reject(new axios.Cancel("Duplicate mutation suppressed (client-side dedup)"))
     }
-    if (idempotencyKey) {
+    if (idempotencyKey && !ownsReservation) {
       _inflightIdempotencyKeys.add(idempotencyKey)
       _dedupeChannel?.postMessage({ key: idempotencyKey, action: "add" })
     }
@@ -655,7 +814,9 @@ api.interceptors.request.use(async (config) => {
     // out. Skip the /auth/csrf-cookie endpoint itself to avoid recursion
     // (it's a GET anyway, so this branch wouldn't fire — guard is defensive).
     const urlForCsrf = config.url
-    if (!urlForCsrf?.includes("/auth/csrf-cookie")) {
+    const recoveryPermit = candidate.__csrfRecoveryPermit
+    const isVerifiedRecovery = Boolean(recoveryPermit && _csrfRecoveryPermits.has(recoveryPermit))
+    if (!isVerifiedRecovery && !urlForCsrf?.includes("/auth/csrf-cookie")) {
       await ensureCsrfCookie()
     }
   }
@@ -737,6 +898,8 @@ api.interceptors.request.use(async (config) => {
 
 // PERF-14-05: Helper to clean up in-flight idempotency key tracking.
 const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
+  const owner = (config as CsrfRecoveryConfig | undefined)?.__csrfRecoveryOwner
+  if (owner && _csrfRecoveryOwners.get(owner()) === owner) _csrfRecoveryOwners.delete(owner())
   const headers = config?.headers
   const key =
     headers instanceof AxiosHeaders
@@ -766,13 +929,54 @@ api.interceptors.response.use(
     }
   },
   async (error) => {
-    const config = error?.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
+    const config = error?.config as CsrfRecoveryConfig | undefined
     const responseStatus = error?.response?.status
-    _cleanupIdempotencyKey(config)
     releaseClientQueueSlot(config)
 
     if (error?.response?.headers) {
       updateTraceContext(error.response.headers as AxiosHeaders)
+    }
+
+    const markedCsrfFailure =
+      responseStatus === 403 &&
+      AxiosHeaders.from(error.response.headers).get(CSRF_REJECTED_HEADER) === "1"
+    const mayRecover =
+      markedCsrfFailure &&
+      config &&
+      !config.__csrfRecoveryAttempted &&
+      ["post", "put", "patch", "delete"].some((method) => method === config.method) &&
+      isTrustedCsrfResponse(config, error)
+    const replay = mayRecover ? csrfReplayBody(config) : undefined
+    if (config && replay) {
+      const key = AxiosHeaders.from(config.headers).get("Idempotency-Key")
+      const owner = typeof key === "string" && key ? () => key : undefined
+      if (owner) {
+        _csrfRecoveryOwners.set(owner(), owner)
+        config.__csrfRecoveryOwner = owner
+      }
+      try {
+        assertCurrentRequestSession(config)
+        if (config.signal?.aborted) throw new axios.CanceledError("Request aborted", config)
+        const refreshed = await forceRefreshCsrfCookie(config.signal as AbortSignal | undefined)
+        assertCurrentRequestSession(config)
+        if (config.signal?.aborted) throw new axios.CanceledError("Request aborted", config)
+        if (!refreshed || !hasReadableCsrfCookie()) return Promise.reject(error)
+        config.__csrfRecoveryAttempted = true
+        config.data = replay()
+        // The first dispatch already ran Axios' default serializer. Preserve
+        // exactly those bytes or the captured multipart fields on replay.
+        config.transformRequest = [(data: unknown) => data]
+        const permit = () => undefined
+        _csrfRecoveryPermits.add(permit)
+        config.__csrfRecoveryPermit = permit
+        try {
+          return await api.request(config)
+        } finally {
+          _csrfRecoveryPermits.delete(permit)
+        }
+      } finally {
+        if (owner && _csrfRecoveryOwners.get(owner()) === owner) _cleanupIdempotencyKey(config)
+      }
     }
 
     const retryCount = config?.__rateLimitRetryCount ?? 0
@@ -783,6 +987,13 @@ api.interceptors.response.use(
       retryCount < RATE_LIMIT_MAX_RETRY &&
       !config.signal?.aborted &&
       !isAbortError(error)
+
+    // Ordinary 429s retain their existing cleanup semantics. A CSRF recovery
+    // owns its reservation until its nested rate-limit retries also settle.
+    const owner = config?.__csrfRecoveryOwner
+    const retainedCsrfReservation =
+      owner && _csrfRecoveryOwners.get(owner()) === owner && willRetryRateLimitedRequest
+    if (!retainedCsrfReservation) _cleanupIdempotencyKey(config)
 
     if (config?.etagCacheKey && responseStatus >= 400 && !willRetryRateLimitedRequest) {
       etagCache.delete(config.etagCacheKey)

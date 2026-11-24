@@ -70,7 +70,7 @@ async def test_event_registry_contains_all_events():
 
 
 def test_csrf_anonymous_session_binding():
-    """Verify that anonymous CSRF binding uses a client fingerprint (RZ-03), not empty string."""
+    """Anonymous CSRF binding uses a per-client nonce."""
 
     class MockRequest:
         def __init__(self):
@@ -78,9 +78,7 @@ def test_csrf_anonymous_session_binding():
             self.cookies = {}
 
     request = MockRequest()
-    session_id = _extract_session_id(request, cookie_token="nonce:hmac")
-    # RZ-03: anonymous requests bind to "anon:{client_host}:{user_agent}" fingerprint
-    # to prevent subdomain-origin token spraying.
+    session_id = _extract_session_id(request)
     assert session_id.startswith("anon:")
 
 

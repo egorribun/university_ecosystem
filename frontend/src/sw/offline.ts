@@ -2,13 +2,14 @@
 declare const self: ServiceWorkerGlobalScope
 
 import { openDB, type IDBPDatabase } from "idb"
+import { CSRF_REJECTED_HEADER } from "@/api/csrfRecovery"
 import { warn } from "./logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
 } from "../constants/notificationInteractionsDb"
 import { OFFLINE_DEAD_LETTER_MESSAGE_TYPE } from "../constants/serviceWorkerMessages"
-import { requestReplayCredentials } from "./replayCredentials"
+import { requestRefreshedReplayCredentials, requestReplayCredentials } from "./replayCredentials"
 import {
   claimReplayLease,
   releaseReplayLease,
@@ -295,6 +296,7 @@ interface QueuedRecord {
 
 type ReplayAttempt =
   | { status: "delivered" }
+  | { status: "csrf-rejected" }
   | { status: "retry"; reason: string }
   | { status: "rejected"; reason: string }
 
@@ -442,7 +444,38 @@ async function replayRecord(
   }
   record = dispatch.claim.record
 
-  const attempt = await deliver(target, record, dispatch.csrfToken)
+  let attempt = await deliver(target, record, dispatch.csrfToken)
+  if (attempt.status === "csrf-rejected") {
+    const refreshed = await requestRefreshedReplayCredentials(passSessionNonce)
+    if (
+      !refreshed ||
+      refreshed.csrfToken === dispatch.csrfToken ||
+      (await revalidateReplayRetry(db, store, record, ownership, dispatch.claim.attemptId)) !==
+        "ready"
+    ) {
+      await commitReplayRecord(
+        db,
+        store,
+        record,
+        ownership,
+        { kind: "hold" },
+        dispatch.claim.attemptId
+      )
+      return "stop"
+    }
+    attempt = await deliver(target, record, refreshed.csrfToken)
+    if (attempt.status === "csrf-rejected") {
+      await commitReplayRecord(
+        db,
+        store,
+        record,
+        ownership,
+        { kind: "hold" },
+        dispatch.claim.attemptId
+      )
+      return "stop"
+    }
+  }
   if (attempt.status === "delivered") {
     const outcome = await commitReplayRecord(
       db,
@@ -484,7 +517,9 @@ async function replayRecord(
 }
 
 type ReplayMutation =
-  { kind: "delete" } | { kind: "retry"; retryCount: number; nextAttemptAt: number }
+  | { kind: "delete" }
+  | { kind: "hold" }
+  | { kind: "retry"; retryCount: number; nextAttemptAt: number }
 
 /** A successor's identity/retry state must never be overwritten by an old snapshot. */
 const REPLAY_RECORD_METADATA = [
@@ -623,6 +658,57 @@ function replayBodyFingerprint(
   }
 }
 
+/** Revalidate the original attempt, lease and exact sent body before a bounded second dispatch. */
+async function revalidateReplayRetry(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  record: QueuedRecord,
+  ownership: ReplayOwnership,
+  attemptId: string
+): Promise<"ready" | "changed" | "stop"> {
+  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
+  try {
+    const leases = tx.objectStore(REPLAY_LEASE_STORE)
+    const [lease, active, current] = (await Promise.all([
+      leases.get(REPLAY_LEASE_KEY),
+      leases.get(REPLAY_ACTIVE_ATTEMPT_KEY),
+      tx.objectStore(store).get(record.id),
+    ])) as [
+      ReplayLeaseRecord | undefined,
+      ReplayActiveAttemptRecord | undefined,
+      QueuedRecord | undefined,
+    ]
+    const now = Date.now()
+    if (
+      ownership.lost ||
+      lease?.owner !== ownership.owner ||
+      lease.expiresAt <= now ||
+      active?.owner !== ownership.owner ||
+      active.attemptId !== attemptId ||
+      active.expiresAt <= now
+    ) {
+      ownership.lost = true
+      await tx.done
+      return "stop"
+    }
+    if (
+      !current ||
+      REPLAY_RECORD_METADATA.some((key) => current[key] !== record[key]) ||
+      replayBodyFingerprint(current) !== replayBodyFingerprint(record)
+    ) {
+      await tx.done
+      return "changed"
+    }
+    // Extend the same marker to cover the entire second request's timeout window.
+    await leases.put({ ...active, expiresAt: lease.expiresAt + REPLAY_REQUEST_TIMEOUT_MS })
+    await tx.done
+    return "ready"
+  } catch (error) {
+    await tx.done.catch(() => undefined)
+    throw error
+  }
+}
+
 /**
  * Lease authorization and the row mutation share one transaction. Only IDB requests are
  * awaited inside it; credentials, network delivery and notifications stay outside.
@@ -678,7 +764,7 @@ async function commitReplayRecord(
     }
     if (mutation.kind === "delete") {
       await queue.delete(record.id)
-    } else {
+    } else if (mutation.kind === "retry") {
       await queue.put({
         ...current,
         retryCount: mutation.retryCount,
@@ -731,6 +817,8 @@ async function deliver(
 ): Promise<ReplayAttempt> {
   const target = sameOriginHref(url)
   if (!target) return { status: "rejected", reason: "cross-origin" }
+  const expectedResponseUrl = new URL(target)
+  expectedResponseUrl.hash = ""
 
   let body: string | undefined
   try {
@@ -751,6 +839,14 @@ async function deliver(
       signal: controller.signal,
     })
     if (response.ok) return { status: "delivered" }
+    if (
+      response.status === 403 &&
+      response.redirected === false &&
+      response.url === expectedResponseUrl.href &&
+      response.headers.get(CSRF_REJECTED_HEADER) === "1"
+    ) {
+      return { status: "csrf-rejected" }
+    }
     const reason = `status-${response.status}`
     return isRetryableReplayStatus(response.status)
       ? { status: "retry", reason }

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { REQUEST_OFFLINE_REPLAY_CREDENTIALS, requestReplayCredentials } from "../replayCredentials"
+import {
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS,
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+  requestRefreshedReplayCredentials,
+  requestReplayCredentials,
+} from "../replayCredentials"
 
 const CREDENTIALS = { csrfToken: "csrf-A", sessionNonce: "session-A" }
 
@@ -29,6 +34,7 @@ describe("AUD-375: service worker asks a controlled window for replay credential
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -114,5 +120,91 @@ describe("AUD-375: service worker asks a controlled window for replay credential
     await vi.advanceTimersByTimeAsync(1_000)
 
     await expect(pending).resolves.toBeNull()
+  })
+
+  it("requires a versioned acknowledgment bound to the requested session", async () => {
+    const oldWindow = answeringClient(CREDENTIALS)
+    const wrongSession = answeringClient({ version: 2, ...CREDENTIALS, sessionNonce: "session-B" })
+    const refreshed = answeringClient({ version: 2, ...CREDENTIALS })
+    stubClients([oldWindow, wrongSession, refreshed])
+
+    await expect(requestRefreshedReplayCredentials("session-A")).resolves.toEqual(CREDENTIALS)
+    expect(refreshed.postMessage).toHaveBeenCalledWith(
+      {
+        type: REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+        version: 2,
+        sessionNonce: "session-A",
+        expiresAt: expect.any(Number),
+      },
+      [expect.any(MessagePort)]
+    )
+  })
+
+  it("allows the bounded bootstrap to finish after the legacy one-second deadline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    const slowWindow = {
+      postMessage: vi.fn((_message: unknown, ports: MessagePort[]) => {
+        setTimeout(() => ports[0]?.postMessage({ version: 2, ...CREDENTIALS }), 8_000)
+      }),
+    }
+    stubClients([slowWindow])
+
+    const pending = requestRefreshedReplayCredentials("session-A")
+    await vi.advanceTimersByTimeAsync(8_000)
+
+    await expect(pending).resolves.toEqual(CREDENTIALS)
+  })
+
+  it("bounds the entire forced request and ignores a late acknowledgment", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let answer: (() => void) | undefined
+    const late = {
+      postMessage: vi.fn((_message: unknown, ports: MessagePort[]) => {
+        answer = () => ports[0]?.postMessage({ version: 2, ...CREDENTIALS })
+      }),
+    }
+    stubClients([late])
+
+    const pending = requestRefreshedReplayCredentials("session-A")
+    await vi.advanceTimersByTimeAsync(9_000)
+    await expect(pending).resolves.toBeNull()
+    answer?.()
+    await vi.runAllTimersAsync()
+  })
+
+  it.each(["", "n".repeat(129)])(
+    "rejects an invalid forced-refresh session before enumerating windows",
+    async (nonce) => {
+      const matchAll = vi.fn()
+      vi.stubGlobal("clients", { matchAll })
+
+      await expect(requestRefreshedReplayCredentials(nonce)).resolves.toBeNull()
+      expect(matchAll).not.toHaveBeenCalled()
+    }
+  )
+
+  it("bounds a stalled controlled-window enumeration", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    vi.stubGlobal("clients", { matchAll: vi.fn(() => new Promise(() => {})) })
+
+    const pending = requestRefreshedReplayCredentials("session-A")
+    await vi.advanceTimersByTimeAsync(9_000)
+
+    await expect(pending).resolves.toBeNull()
+  })
+
+  it("does not ask a window when enumeration consumed the refresh deadline", async () => {
+    let monotonicNow = performance.now()
+    vi.spyOn(performance, "now").mockImplementation(() => monotonicNow)
+    const client = answeringClient({ version: 2, ...CREDENTIALS })
+    vi.stubGlobal("clients", {
+      matchAll: vi.fn(async () => {
+        monotonicNow += 9_000
+        return [client]
+      }),
+    })
+
+    await expect(requestRefreshedReplayCredentials("session-A")).resolves.toBeNull()
+    expect(client.postMessage).not.toHaveBeenCalled()
   })
 })

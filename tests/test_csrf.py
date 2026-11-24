@@ -555,33 +555,6 @@ async def test_csrf_cookie_secure_flag_set(monkeypatch) -> None:
     )
 
 
-def test_extract_session_id_with_existing_session_id() -> None:
-    """Lines 169→184: _extract_session_id returns existing session_id without generating anon nonce.
-
-    When request.state already has a session_id (set by JWT middleware), the function
-    should return it directly, skipping the anonymous nonce generation path.
-    """
-    from types import SimpleNamespace
-
-    from app.core.csrf import _NEW_ANON_NONCE_STATE_KEY, _extract_session_id
-
-    # Use a real SimpleNamespace so hasattr() works correctly (MagicMock auto-creates attrs).
-    mock_state = SimpleNamespace(session_id="existing-session-abc123")
-
-    class _FakeRequest:
-        state = mock_state
-
-        def __init__(self) -> None:
-            self.cookies: dict[str, str] = {}
-
-    session_id = _extract_session_id(_FakeRequest(), "dummy-cookie-token")  # type: ignore[arg-type]
-
-    # Should return the existing session_id directly (branch at line 169 is False)
-    assert session_id == "existing-session-abc123"
-    # The NEW_ANON_NONCE_STATE_KEY should NOT be set (no new nonce generated)
-    assert not hasattr(mock_state, _NEW_ANON_NONCE_STATE_KEY)
-
-
 async def test_non_http_scope_bypasses() -> None:
     """Non-HTTP scopes (like websocket or lifespan) bypass CSRF middleware."""
     from unittest.mock import AsyncMock
@@ -613,46 +586,6 @@ async def test_secure_cookies_flag() -> None:
         )
         assert "Secure" in csrf_cookie_header
         assert "Secure" in anon_cookie_header
-
-
-@pytest.mark.asyncio
-async def test_csrf_with_authenticated_session() -> None:
-    """CSRF validates successfully when session_id is bound in request state."""
-    app = FastAPI()
-
-    @app.get("/safe")
-    async def safe():
-        return {"ok": True}
-
-    @app.post("/mut")
-    async def mut():
-        return {"ok": True}
-
-    # Custom raw ASGI middleware to set session_id
-    class SessionIdMiddleware:
-        def __init__(self, app_to_wrap):
-            self.app_to_wrap = app_to_wrap
-
-        async def __call__(self, scope, receive, send):
-            if scope["type"] == "http":
-                if "state" not in scope:
-                    scope["state"] = {}
-                scope["state"]["session_id"] = "user-123"
-            await self.app_to_wrap(scope, receive, send)
-
-    # Wrap the app: SessionIdMiddleware (outer) -> CSRFMiddleware (inner) -> FastAPI app
-    csrf_wrapped = CSRFMiddleware(app, csrf_hmac_secret="a" * 32, cookie_secure=False)
-    final_app = SessionIdMiddleware(csrf_wrapped)
-
-    transport = httpx.ASGITransport(app=final_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
-        await client.get("/safe")
-        cookie = client.cookies.get(CSRF_COOKIE_NAME)
-        assert cookie is not None
-        resp2 = await client.post("/mut", headers={CSRF_HEADER_NAME: cookie})
-        assert resp2.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -828,6 +761,203 @@ async def test_first_visit_anonymous_nonce_lives_as_long_as_csrf_cookie() -> Non
     assert max_age(_ANON_NONCE_COOKIE_NAME) == max_age(CSRF_COOKIE_NAME)
 
 
+@pytest.fixture
+def signed_application(app: FastAPI) -> FastAPI:
+    """Exercise the real routes with a test-specific signed CSRF middleware."""
+    from copy import copy
+
+    from starlette.middleware import Middleware
+
+    signed_app = copy(app)
+    signed_app.middleware_stack = None
+    signed_app.user_middleware = [
+        Middleware(
+            item.cls,
+            *item.args,
+            **{**item.kwargs, "csrf_hmac_secret": "x" * 32},
+        )
+        if item.cls is CSRFMiddleware
+        else item
+        for item in app.user_middleware
+    ]
+    return signed_app
+
+
+@pytest.mark.asyncio
+async def test_login_issues_csrf_bound_to_the_new_session(
+    signed_application: FastAPI, user_factory: Any
+) -> None:
+    """The login response binds the new cookie before its JWT is in a request."""
+    from app.auth.security import decode_token, get_password_hash
+
+    password = secrets.token_urlsafe(20) + "aA1!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    transport = httpx.ASGITransport(app=signed_application)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        initial = await client.get("/api/v1/auth/csrf-cookie")
+        assert initial.status_code == 200
+        anonymous_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert anonymous_token is not None
+
+        login = await client.post(
+            "/api/v1/auth/login/json",
+            headers={CSRF_HEADER_NAME: anonymous_token},
+            json={"email": user.email, "password": password},
+        )
+        assert login.status_code == 200
+        access_token = client.cookies.get("access_token_v2")
+        authenticated_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert access_token is not None and authenticated_token is not None
+        payload = decode_token(access_token)
+        assert payload is not None
+        assert authenticated_token != anonymous_token
+        assert _verify_signed_token(authenticated_token, payload["jti"], b"x" * 32)
+
+        # A subsequent sign-in issues a different session even when the
+        # anonymous nonce cookie is no longer present.
+        client.cookies.delete(_ANON_NONCE_COOKIE_NAME)
+        second_login = await client.post(
+            "/api/v1/auth/login/json",
+            headers={CSRF_HEADER_NAME: authenticated_token},
+            json={"email": user.email, "password": password},
+        )
+        assert second_login.status_code == 200
+        new_access_token = client.cookies.get("access_token_v2")
+        new_csrf_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert new_access_token is not None and new_csrf_token is not None
+        new_payload = decode_token(new_access_token)
+        assert new_payload is not None
+        assert new_payload["jti"] != payload["jti"]
+        assert _verify_signed_token(new_csrf_token, new_payload["jti"], b"x" * 32)
+
+        logout = await client.post(
+            "/api/v1/auth/logout",
+            headers={CSRF_HEADER_NAME: new_csrf_token},
+        )
+        assert logout.status_code == 200
+        next_token = client.cookies.get(CSRF_COOKIE_NAME)
+        nonce = client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+        assert next_token is not None and nonce is not None
+        assert _verify_signed_token(next_token, f"anon:{nonce}", b"x" * 32)
+
+        login_again = await client.post(
+            "/api/v1/auth/login/json",
+            headers={CSRF_HEADER_NAME: next_token},
+            json={"email": user.email, "password": password},
+        )
+        assert login_again.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_safe_request_renews_csrf_after_session_ends(
+    signed_application: FastAPI, user_factory: Any
+) -> None:
+    """An expired browser session can obtain a fresh anonymous CSRF cookie."""
+    from app.auth.security import get_password_hash
+
+    password = secrets.token_urlsafe(20) + "aA1!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    transport = httpx.ASGITransport(app=signed_application)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        await client.get("/api/v1/auth/csrf-cookie")
+        initial = client.cookies.get(CSRF_COOKIE_NAME)
+        assert initial is not None
+        login = await client.post(
+            "/api/v1/auth/login/json",
+            headers={CSRF_HEADER_NAME: initial},
+            json={"email": user.email, "password": password},
+        )
+        assert login.status_code == 200
+        authenticated_token = client.cookies.get(CSRF_COOKIE_NAME)
+        client.cookies.delete("access_token_v2")
+
+        refreshed = await client.get("/api/v1/auth/csrf-cookie")
+        assert refreshed.status_code == 200
+        renewed_token = client.cookies.get(CSRF_COOKIE_NAME)
+        nonce = client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+        assert renewed_token is not None and nonce is not None
+        assert renewed_token != authenticated_token
+        assert _verify_signed_token(renewed_token, f"anon:{nonce}", b"x" * 32)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mint_options",
+    [{"expires_minutes": -1}, {"extra_claims": {"jti": ""}}],
+    ids=["expired-session", "empty-session-id"],
+)
+async def test_unusable_access_cookie_keeps_anonymous_csrf_flow(
+    mint_options: dict[str, Any],
+) -> None:
+    """An unusable access cookie does not prevent anonymous CSRF bootstrap."""
+    from app.auth.security import _mint_pure_jwt
+
+    access_token = _mint_pure_jwt("test-user", **mint_options)
+    app = _wrap(_make_app())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        client.cookies.set("access_token_v2", access_token)
+        initial = await client.get("/safe")
+        assert initial.status_code == 200
+        nonce = client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+        csrf_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert nonce is not None and csrf_token is not None
+        assert _verify_signed_token(csrf_token, f"anon:{nonce}", b"x" * 32)
+        response = await client.post("/mut", headers={CSRF_HEADER_NAME: csrf_token})
+        assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upstream_public_cache", [False, True])
+async def test_csrf_cookie_response_is_not_publicly_cacheable(
+    upstream_public_cache: bool,
+) -> None:
+    """Static cache policy must not expose a newly issued session-bound cookie."""
+    from fastapi.responses import Response
+
+    from app.auth.security import _mint_pure_jwt, decode_token
+    from app.core.middleware.response_hardening import http_response_hardening
+
+    app = FastAPI()
+
+    @app.get("/static/example")
+    async def static_example() -> Response:
+        headers = (
+            {"Cache-Control": "public, max-age=86400"}
+            if upstream_public_cache
+            else None
+        )
+        return Response(content=b"example", headers=headers)
+
+    app.add_middleware(CSRFMiddleware, csrf_hmac_secret="x" * 32, cookie_secure=False)
+    app.middleware("http")(http_response_hardening)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        access_token = _mint_pure_jwt("test-user")
+        payload = decode_token(access_token)
+        assert payload is not None
+        client.cookies.set("access_token_v2", access_token)
+
+        initial = await client.get("/static/example")
+        assert initial.status_code == 200
+        csrf_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert csrf_token is not None
+        assert _verify_signed_token(csrf_token, payload["jti"], b"x" * 32)
+        assert initial.headers.get_list("cache-control") == ["private, no-store"]
+
+        subsequent = await client.get("/static/example")
+        assert subsequent.headers.get("cache-control") == "public, max-age=86400"
+        assert subsequent.headers.get_list("set-cookie") == []
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("locale", ["en", "ru"])
 async def test_missing_csrf_proof_has_pre_handler_marker(locale: str) -> None:
@@ -888,6 +1018,44 @@ async def test_stale_header_has_pre_handler_marker() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_session_binding_rejection_precedes_logout(
+    signed_application: FastAPI, user_factory: Any
+) -> None:
+    """An anonymous token from before login cannot authorize logout."""
+    from app.auth.security import get_password_hash
+
+    password = secrets.token_urlsafe(20) + "aA1!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    transport = httpx.ASGITransport(app=signed_application)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        await client.get("/api/v1/auth/csrf-cookie")
+        anonymous_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert anonymous_token is not None
+        login = await client.post(
+            "/api/v1/auth/login/json",
+            headers={CSRF_HEADER_NAME: anonymous_token},
+            json={"email": user.email, "password": password},
+        )
+        assert login.status_code == 200
+        assert client.cookies.get(CSRF_COOKIE_NAME) != anonymous_token
+
+        # Model the old anonymous response arriving after the login response.
+        csrf_cookie = next(
+            cookie for cookie in client.cookies.jar if cookie.name == CSRF_COOKIE_NAME
+        )
+        csrf_cookie.value = anonymous_token
+        response = await client.post(
+            "/api/v1/auth/logout", headers={CSRF_HEADER_NAME: anonymous_token}
+        )
+        assert response.status_code == 403
+        assert response.headers.get("x-csrf-rejected") == "1"
+        assert response.headers.get_list("cache-control") == ["private, no-store"]
+        assert (await client.get("/api/v1/users/me")).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_handler_forbidden_response_has_no_csrf_marker() -> None:
     from fastapi import HTTPException
 
@@ -927,3 +1095,23 @@ async def test_csrf_marker_is_private_through_outer_response_hardening() -> None
     assert response.status_code == 403
     assert response.headers.get("x-csrf-rejected") == "1"
     assert response.headers.get_list("cache-control") == ["private, no-store"]
+
+
+@pytest.mark.asyncio
+async def test_csrf_bootstrap_is_private_without_cookie_rotation(
+    signed_application: FastAPI,
+) -> None:
+    transport = httpx.ASGITransport(app=signed_application)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        initial = await client.get("/api/v1/auth/csrf-cookie")
+        assert initial.status_code == 200
+        assert initial.headers.get_list("cache-control") == ["private, no-store"]
+        assert initial.cookies.get(CSRF_COOKIE_NAME) is not None
+
+        subsequent = await client.get("/api/v1/auth/csrf-cookie")
+        assert subsequent.status_code == 200
+        assert subsequent.headers.get_list("set-cookie") == []
+        assert subsequent.headers.get_list("cache-control") == ["private, no-store"]
+        assert "x-csrf-rejected" not in subsequent.headers

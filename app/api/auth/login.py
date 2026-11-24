@@ -484,7 +484,8 @@ async def resend_email_mfa_challenge(
     summary="Initialize CSRF token",
     description="This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.",
 )
-async def get_csrf_cookie() -> dict[str, str]:
+async def get_csrf_cookie(response: Response) -> dict[str, str]:
+    response.headers["Cache-Control"] = "private, no-store"
     return {"detail": "CSRF cookie set"}
 
 

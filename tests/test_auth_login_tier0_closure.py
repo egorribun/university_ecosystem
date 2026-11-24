@@ -219,7 +219,11 @@ async def test_login_preserves_non_auth_http_errors(route_name: str) -> None:
 
 @pytest.mark.asyncio
 async def test_csrf_cookie_and_signing_key_routes():
-    assert await login_api.get_csrf_cookie() == {"detail": "CSRF cookie set"}
+    from fastapi import Response
+
+    response = Response()
+    assert await login_api.get_csrf_cookie(response) == {"detail": "CSRF cookie set"}
+    assert response.headers["cache-control"] == "private, no-store"
 
     request = SimpleNamespace(state=SimpleNamespace(active_session=None))
     with pytest.raises(HTTPException) as caught:
