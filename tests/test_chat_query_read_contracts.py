@@ -80,7 +80,6 @@ async def test_chat_list_forwards_typed_avatar_and_last_message_metadata():
     peer_id, chat_id, message_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     participant = ChatParticipantDTO(
         id=peer_id,
-        email="peer@example.com",
         full_name="Stale DTO name",
         avatar_url="/static/peer.png",
         is_active=False,
@@ -153,7 +152,7 @@ async def test_message_page_forwards_cursor_and_preserves_public_forward_fields(
         id=chat_id,
         created_at=_NOW,
         updated_at=_NOW,
-        participants=[ChatParticipantDTO(id=owner.id, email="owner@example.com")],
+        participants=[ChatParticipantDTO(id=owner.id)],
     )
     earlier = MessageDTO(
         id=uuid.uuid4(),
@@ -249,7 +248,8 @@ async def test_last_message_batch_hydrates_requested_live_and_deleted_rows(
     assert rows[deleted_id].forwarded_from_name == "Original sender"
     for row in rows.values():
         assert row.sender is not None
-        assert (row.sender.id, row.sender.email) == (peer.id, peer.email)
+        assert row.sender.id == peer.id
+        assert "email" not in row.sender.model_dump()
         public = row.model_dump()
         assert "forwarded_from_chat_id" not in public
         assert "forwarded_from_message_id" not in public

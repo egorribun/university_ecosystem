@@ -56,7 +56,8 @@ async def test_last_messages_hydrates_attachments_and_reply_sender(
     assert set(rows) == {message_id}
     message = rows[message_id]
     assert message.sender is not None
-    assert (message.sender.id, message.sender.email) == (peer.id, peer.email)
+    assert message.sender.id == peer.id
+    assert "email" not in message.sender.model_dump()
     assert len(message.attachments) == 1
     assert message.attachments[0].id == attachment_id
     assert message.attachments[0].message_id == message_id
@@ -68,10 +69,8 @@ async def test_last_messages_hydrates_attachments_and_reply_sender(
         "Original",
     )
     assert message.replied_to.sender is not None
-    assert (message.replied_to.sender.id, message.replied_to.sender.email) == (
-        owner.id,
-        owner.email,
-    )
+    assert message.replied_to.sender.id == owner.id
+    assert "email" not in message.replied_to.sender.model_dump()
     assert message.replied_to.replied_to is None
     db_session.expunge_all()
     assert message.model_dump()["attachments"][0]["id"] == attachment_id

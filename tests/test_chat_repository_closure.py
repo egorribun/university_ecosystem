@@ -170,8 +170,8 @@ async def test_message_and_user_lookup_helpers() -> None:
         _result(rows=[message_a, message_b]),
         _result(
             rows=[
-                (USER_ID, "alice@example.test", True, "Alice"),
-                (OTHER_ID, "bob@example.test", False, None),
+                (USER_ID, True, "Alice"),
+                (OTHER_ID, False, None),
             ]
         ),
     ]
@@ -182,7 +182,6 @@ async def test_message_and_user_lookup_helpers() -> None:
             update={
                 "sender": ChatParticipantDTO(
                     id=USER_ID,
-                    email="alice@example.test",
                     is_active=True,
                     full_name="Alice",
                 )
@@ -192,7 +191,6 @@ async def test_message_and_user_lookup_helpers() -> None:
             update={
                 "sender": ChatParticipantDTO(
                     id=OTHER_ID,
-                    email="bob@example.test",
                     is_active=False,
                     full_name=None,
                 )
@@ -627,14 +625,13 @@ async def test_participants_receipts_type_message_and_presence() -> None:
     )
     db.execute.side_effect = [
         _result(scalar_one_or_none=message),
-        _result(rows=[(USER_ID, "alice@example.test", True, "Alice")]),
+        _result(rows=[(USER_ID, True, "Alice")]),
     ]
     result = await repo.get_message_by_id(CHAT_ID)
     assert result == message.model_copy(
         update={
             "sender": ChatParticipantDTO(
                 id=USER_ID,
-                email="alice@example.test",
                 is_active=True,
                 full_name="Alice",
             )
