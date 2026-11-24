@@ -54,7 +54,7 @@ models.
 | Push | `/api/v1/push/subscribe`, `/api/v1/push/unsubscribe`, `/api/v1/push/topics`, VAPID key, broadcast/test, and admin topic operations |
 | Search, statistics, integrations | `/api/v1/search`, `/api/v1/stats/{summary,attendance,grades,participation}`, `/api/v1/spotify/*` |
 | Performance and media | `/api/v1/cwv/*`, `POST /api/v1/csp-report`, and `GET /api/v1/img/{path}` |
-| WebSocket bootstrap | `POST /ws/ticket` issues a short-lived upgrade ticket; the WebSocket endpoint is `/ws` |
+| WebSocket bootstrap | `POST /ws/ticket` issues a short-lived upgrade ticket; connect to `/ws/chat` on the same Caddy origin (`/ws` is the upstream path) |
 | Admin read routes (both prefixes) | `GET /admin/audit`, `GET /admin/audit/time-travel`, `GET /admin/feature-flags`, `GET /api/v1/admin/audit`, `GET /api/v1/admin/audit/time-travel`, and `GET /api/v1/admin/feature-flags` |
 
 The three listed admin GET/read routes appear under both the unversioned root and `/api/v1`. The feature-flags PATCH route at `/admin/feature-flags/{name}` (also `/api/v1/admin/feature-flags/{name}`) is intentionally excluded with `include_in_schema=False`, so it is not listed in the public OpenAPI route index. Internal routes are also excluded with `include_in_schema=False`. The backend GraphQL endpoint is not mounted in the MVP; see [ADR-046](../adr/ADR-046-codebase-consolidation-audit.md).
