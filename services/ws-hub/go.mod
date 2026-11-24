@@ -13,7 +13,7 @@ require (
 	// university-backend → ws-hub NATS message contract.  pact-go/v2 wraps the
 	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.
 	// Install the FFI once: go run github.com/pact-foundation/pact-go/v2/install
-	github.com/pact-foundation/pact-go/v2 v2.9.0
+	github.com/pact-foundation/pact-go/v2 v2.9.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
@@ -31,7 +31,7 @@ require (
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/lestrrat-go/httprc/v3 v3.0.6
-	github.com/moby/moby/api v1.56.1
+	github.com/moby/moby/api v1.57.0
 	github.com/quic-go/quic-go v0.64.1
 	github.com/quic-go/webtransport-go v0.13.0
 	github.com/sony/gobreaker/v2 v2.4.0
