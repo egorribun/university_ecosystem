@@ -1679,9 +1679,17 @@ def test_local_frontend_documentation_uses_caddy_as_supported_entry() -> None:
         )
     )
 
-    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
-        document = _read(relative_path)
-        assert "docker compose up -d frontend caddy" in document
+    for document in (russian_deploy, english_deploy):
+        assert "(../README.md#2-ignition)" in document
+        assert "docker compose up -d frontend caddy" not in document
+
+    readme = _read("README.md")
+    assert "### 2. Ignition\n" in readme
+    ignition = readme.split("### 2. Ignition\n", 1)[1].split("\n### ", 1)[0]
+    assert r".\start-docker.ps1 -Build" in ignition
+    assert '$ComposeFile = "docker-compose.full.yml"' in _read("start-docker.ps1")
+    full_compose = _compose("docker-compose.full.yml")
+    assert {"frontend", "caddy", "gateway", "ws-hub"} <= full_compose["services"].keys()
 
 
 def test_production_temporal_entrypoint_never_enables_no_auth() -> None:

@@ -359,11 +359,7 @@ PY
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
 - Контейнер слушает порт `3000` во внутренней сети `frontend_net`; Compose публикует Caddy на хостовых портах `80` и `443`. Локальный full-Compose Caddyfile обслуживает приложение на `:80` без HTTPS redirect; в production браузерный трафик должен идти через HTTPS. Caddy проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
 
-```bash
-# пример локальной сборки
-docker compose build frontend
-docker compose up -d frontend caddy
-```
+Используйте [инструкцию по запуску полного стека Compose](../README.md#2-ignition), чтобы собрать фронтенд и запустить его через Caddy вместе с API-шлюзом и WebSocket-сервисом.
 
 ## Edge reverse proxy
 
