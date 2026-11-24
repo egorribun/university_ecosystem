@@ -128,7 +128,8 @@ protocol header.
 
 ## Errors
 
-Validation and application errors use the JSON shape `{"detail":"..."}`.
-Handle the status codes declared for each operation in OpenAPI, including
-`401` for missing/invalid authentication, `422` for request validation, and
-`429` with `Retry-After` when a rate limit is exceeded.
+Request validation errors use HTTP `422` with a list in the JSON `detail` field.
+Handled HTTP and domain errors can use `application/problem+json` with a
+human-readable `detail` string and additional metadata. Handle the status codes
+declared for each operation in OpenAPI, including `401` for missing or invalid
+authentication. On HTTP `429`, honor `Retry-After` when the header is present.
