@@ -1,7 +1,11 @@
 /** Only the pre-handler CSRF rejection carries this first-party marker. */
 export const CSRF_REJECTED_HEADER = "x-csrf-rejected"
 
-/** Force a fresh cookie even when an older session-bound cookie is present. */
+/**
+ * Ask the server for a CSRF cookie bound to the current session. The server
+ * reissues the cookie only when the present one no longer matches; a cookie
+ * that still matches is kept, and the caller replays with it.
+ */
 export async function forceRefreshCsrfCookie(signal?: AbortSignal): Promise<boolean> {
   if (typeof window === "undefined" || typeof document === "undefined") return false
   if (import.meta.env.VITE_LHCI === "true" || signal?.aborted) return false
