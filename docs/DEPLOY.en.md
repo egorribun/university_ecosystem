@@ -350,11 +350,7 @@ PY
 - Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
 - The container listens on port `3000` on the internal `frontend_net`; Compose publishes Caddy on host ports `80` and `443`. The local full-Compose Caddyfile serves the app on `:80` without an HTTPS redirect; production browser access must use HTTPS. Caddy proxies requests to `frontend:3000`. Docker health checks `/healthz` inside the container, while `start-docker.ps1` separately verifies the rendered `/login` route through Caddy.
 
-```bash
-# example local build
-docker compose build frontend
-docker compose up -d frontend caddy
-```
+Use the [full Compose startup instructions](../README.md#2-ignition) to build and serve the frontend through Caddy along with the API gateway and WebSocket hub.
 
 ## Edge reverse proxy
 
