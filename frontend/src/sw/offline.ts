@@ -373,6 +373,26 @@ function withReplayLease(task: ReplayTask): Promise<void> {
 }
 
 /**
+ * Deletes every queued record bound to an ending browser session and returns how many were
+ * removed. It takes the replay lock and lease like a pass, so it never races a dispatch.
+ */
+export async function discardSessionRecords(sessionNonce: string): Promise<number> {
+  let discarded = 0
+  await withReplayLock(async (db, ownership) => {
+    for (const store of REPLAY_STORES) {
+      const records = (await db.getAll(store)) as QueuedRecord[]
+      for (const record of records) {
+        if (record.sessionNonce !== sessionNonce) continue
+        const outcome = await commitReplayRecord(db, store, record, ownership, { kind: "delete" })
+        if (outcome === "stop") return
+        if (outcome === "committed") discarded += 1
+      }
+    }
+  })
+  return discarded
+}
+
+/**
  * Replays only the records bound to the session that a live window vouches for. Records
  * without a session binding, and records bound to any other session, are never sent.
  */

@@ -12,6 +12,7 @@ import i18n from "../../i18n/config"
 import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { useLogoutNoticeStore } from "@/stores/logoutNoticeStore"
 
 // Login's successful path warms the dashboard in the background.  Keep the
 // page contract under test while making those optional dynamic imports settle
@@ -190,6 +191,26 @@ describe("Login page", () => {
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
     expect(captured).toEqual([{ username: "user@example.com", password: "secret123" }])
   }, 15000)
+
+  it("tells a signed-out visitor that unsent offline changes were discarded", async () => {
+    useLogoutNoticeStore.setState({ offlineChangesDiscarded: true })
+    try {
+      await renderLogin()
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        tAuth("login.logoutOfflineDiscarded")
+      )
+    } finally {
+      act(() => {
+        useLogoutNoticeStore.setState({ offlineChangesDiscarded: false })
+      })
+    }
+  })
+
+  it("clears the offline-discard notice once an account signs in", async () => {
+    useLogoutNoticeStore.setState({ offlineChangesDiscarded: true })
+    await renderLogin({ skipMeOverride: true })
+    await waitFor(() => expect(useLogoutNoticeStore.getState().offlineChangesDiscarded).toBe(false))
+  })
 
   it("redirects authed user away from /login (W174 §Honesty #3, W177 SW1)", async () => {
     // Wave 177 SW1+SW2 regression test. With skipMeOverride:true, renderLogin

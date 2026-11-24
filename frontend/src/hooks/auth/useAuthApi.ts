@@ -32,7 +32,12 @@ import {
   syncPushForConfirmedIdentity,
 } from "@/push/subscribe"
 import { logWarning } from "@/app/logger"
-import { clearLogoutNotice, markLogoutUnconfirmed } from "@/stores/logoutNoticeStore"
+import {
+  clearLogoutNotice,
+  markLogoutUnconfirmed,
+  markOfflineChangesDiscarded,
+} from "@/stores/logoutNoticeStore"
+import { captureOfflineSession, discardOfflineSession } from "@/api/offlineMutationQueue"
 import { incrementSessionEpoch } from "@/api/interceptors/etagCache"
 
 /**
@@ -257,10 +262,16 @@ export const useAuthApi = (
 
   const logout = useCallback(
     async ({ serverRevocationConfirmed = false }: LogoutOptions = {}) => {
+      const endingOfflineSession = captureOfflineSession()
       const transition = beginAuthTransition("logout")
       if (transition.status === "denied") return
       const ownsSession = transition.isCurrent
       try {
+        // Owner decision 2026-11-24: sign-out discards the session's unsent offline changes
+        // and says so. Do it first: a confirmed logout's Clear-Site-Data wipes them silently.
+        if (endingOfflineSession && (await discardOfflineSession(endingOfflineSession))) {
+          if (ownsSession()) markOfflineChangesDiscarded()
+        }
         if (user) {
           // Keep the browser subscription so it can be recovered on the next
           // login, but detach it from this account on the server while the

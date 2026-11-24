@@ -14,6 +14,7 @@ import {
   processPendingReports,
   addRecord,
   processOfflineQueues,
+  discardSessionRecords,
   STORES,
 } from "../offline"
 
@@ -356,6 +357,54 @@ describe("Service Worker - Offline Storage & Sync", () => {
       expect(await readPendingMutations()).toEqual([
         expect.objectContaining({ sessionNonce: "session-A" }),
       ])
+    })
+
+    it("discards only the ending session's records across every replay queue", async () => {
+      for (const [timestamp, sessionNonce] of [
+        [1, "session-A"],
+        [2, "session-B"],
+      ] as const) {
+        await storePendingNavigation({
+          url: `http://localhost/n${timestamp}`,
+          timestamp,
+          sessionNonce,
+        })
+        await storePendingReport({
+          url: `http://localhost/r${timestamp}`,
+          reportUrl: `http://localhost/api/r${timestamp}`,
+          timestamp,
+          method: "PUT",
+          payload: { timestamp },
+          sessionNonce,
+        })
+        await storePendingMutation({
+          url: `http://localhost/api/m${timestamp}`,
+          method: "PATCH",
+          payload: { timestamp },
+          mutationId: `m-${sessionNonce}`,
+          idempotencyKey: `k-${sessionNonce}`,
+          timestamp,
+          sessionNonce,
+        })
+      }
+      await storePendingMutation({
+        url: "http://localhost/api/unbound",
+        method: "PATCH",
+        payload: {},
+        mutationId: "m-unbound",
+        idempotencyKey: "k-unbound",
+        timestamp: 3,
+      })
+
+      expect(await discardSessionRecords("session-A")).toBe(3)
+
+      const remaining = [
+        ...(await readPendingNavigations()),
+        ...(await readPendingReports()),
+        ...(await readPendingMutations()),
+      ].map((record) => (record as { sessionNonce?: string | null }).sessionNonce ?? null)
+      expect(remaining.sort()).toEqual([null, "session-B", "session-B", "session-B"].sort())
+      expect(await discardSessionRecords("session-A")).toBe(0)
     })
 
     it("leaves a record unbound when the caller supplies no nonce or an explicit null", async () => {
