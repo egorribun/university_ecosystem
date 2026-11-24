@@ -1,100 +1,59 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
 Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
-в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
+в истории файла: `git log -- docs/superpowers/plans/STATUS.md`. Покрытие строк ТЗ — в
+[матрице трассируемости](../../testing/mvp-traceability-matrix.md).
 
 ## Текущий срез — 2026-11-24
 
 ### `main` и пакет PR
 
-- `main` = `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` после обычного merge [#1577](https://github.com/egorribun/university_ecosystem/pull/1577) 2026-11-23 в 19:22:45 UTC.
-  На PR head `df56a3bb17d6cee3dced215f62b17b0c533aa94f` проверены 78 обязательных пар контекст/app и блокирующий CodeQL.
-  [PR receipt 14852279190](https://github.com/egorribun/university_ecosystem/actions/runs/45242979321/artifacts/14852279190) относится к synthetic merge `0db0bb681a64246be9aa76dfb9afb05379c7a332`, SHA-256 `9350e127d050e623ce74938d23b46d1198f6d533bf861f820eec96ffa4ad2c39`.
-- [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383) и [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45248331850) прошли на `7e54feee`.
-- На `7e54feee` штатные collector и validator подтвердили все 12 main-push проверок политики выпуска.
-  Bundle `check-runs.json`, SHA-256 `29208c5d5a05ce950a23dcf16d088995bf54929091e602ce0227037156743e32`.
-- [Quality evidence 14856563853](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14856563853) — SHA-256 архива `dd85291cb583dad0ec912f859b9e3622801f5c27ca84afb15f1216130ec726b8`,
-  манифеста `0a10dd0ce0e59541e831ac9a31257c7e2b2ad97659b39237919d13ea3bf0300f`. Проверены 13 компонентов, Tier 0 ready. Повторно сверены все 16 файлов отчётов.
-- Исторический `main` `a2d295bc7b710a3db58956841146d43a6b086cbe` получен merge [#1576](https://github.com/egorribun/university_ecosystem/pull/1576).
-  [CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353), [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892) и [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152) относятся к этому SHA. SHA-256 архива и манифеста, схема и 13 компонентов сверены.
-- Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
-  [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли. У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
-  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов. Эти доказательства относятся к тому SHA.
-- Все черновики облачного агента и старые черновики закрыты по решению владельца 2026-11-23: #1426,
-  #1506, #1507, #1557–#1561, #1563, #1565. Обновления Dependabot #1571 (кроме @lhci/cli) и #1572
-  перенесены коммитами владельца.
-
-- [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) заблокирован на опубликованном head
-  `23fcae763696cb76cba909ef04bfe95876f6379a`. Повтор [CI, attempt 2](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/attempts/2)
-  завершился ошибкой выбора `libcrypto3=3.5.9-r0` и `libssl3=3.5.9-r0` в двух сборках Caddy.
-  Затронуты [Trivy](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138066650807),
-  [log proof](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138066649472)
-  и итоговый [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/45266612785/job/138067629129).
-  На точном head актуальны 77 успешных пар из 78 и [успешный CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45266612769).
-  Оба официальных индекса Alpine v3.23 предлагают `libcrypto3=3.5.9-r1` и `libssl3=3.5.9-r1`.
-  Сверены четыре APK и запись исходного коммита в обоих индексах. Штатный `apk verify` подтвердил подписи всех четырёх APK и двух индексов. Для arm64 использован публичный ключ из слоя Alpine, проверенного по digest закреплённого arm64-образа Caddy.
-  SHA-256 receipts: метаданные `4849185f0f3e6c17f188642d86f6064d4a7a937768cf4d5d0d177251b99b0d45`,
-  x86_64 `4b7767ceeaa1c575902ff0180abf9bee357db28e95558522f226d1f834ca221e`,
-  arm64 `aacdc56acfa343bbca0c6e2c3ccf13870f3d2f35fd54439d7bbbaa88ba9a0693`.
-  Ожидается обычное окно допуска либо явное решение владельца по досрочному обновлению. [Изменение Alpine](https://github.com/alpinelinux/aports/commit/bf5c30350a8ee29ad0729a34057f8c8f6e213916).
-- На локальном `egorribun` `60d9f338` прошли 2 288 тестов из `test_quality_contract.py`, `test_verify_secrets_baseline.py`, `test_gitleaks_dispositions_contract.py` и `test_ci_check_catalog.py`. Штатный detect-secrets обновил номера строк ранее известных записей в `test_stats_api.py`. Все 242 идентичности и отметки проверки совпали с предыдущим коммитом.
+- `main` = `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` после обычного merge
+  [#1577](https://github.com/egorribun/university_ecosystem/pull/1577) 2026-11-23 в 19:22:45 UTC.
+  [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45248331850) прошли.
+  [Quality evidence 14856563853](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14856563853):
+  SHA-256 архива `dd85291cb583dad0ec912f859b9e3622801f5c27ca84afb15f1216130ec726b8`, 13 компонентов, Tier 0 ready.
+- 2026-11-23 влиты [#1574](https://github.com/egorribun/university_ecosystem/pull/1574),
+  [#1576](https://github.com/egorribun/university_ecosystem/pull/1576) и #1577: перечисления фильтров событий,
+  CSRF-ключ admin smoke, патчи Dependabot #1571/#1572, скрытие email участников чата, ускорение карты,
+  ADR-056 о блокировке входа по email, исправления доступности.
+- [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) открыт: работа перерыва 2026-11-23/24 и
+  исправления 2026-11-24. Его required checks на текущем head ещё не получены.
+  - Caddy: `libcrypto3`/`libssl3` `3.5.9-r1` (исключение из cooldown,
+    [DEPENDENCY_COOLDOWN_EMERGENCY.md](../../DEPENDENCY_COOLDOWN_EMERGENCY.md), истекает 2026-11-30).
+  - ws-hub: `gorilla/websocket` на псевдоверсии с исправлением GO-2026-6278; подтверждение допуска
+    в комнату (R23); Go-обновления из Dependabot #1579/#1580.
+  - Статистика: пакетное чтение холодной сводки и fence заполнения кэша для Redis, Tiered и Memory.
+    На NATS KV сводка не кэшируется.
+  - Auth и профиль: одна JOIN-выборка сессии и пользователя, `/me` без записи pending email.
+  - Чат: email не попадает в события typing и во внутренние проекции отправителя.
+  - Доступность: brand-поверхности расписания используют `text-inverse-text` (тёмная тема 2.1:1 → 9.5:1).
+  - Карта: раскладка маркеров рендерится как transition, Intl-форматтеры кэшируются.
+  - npm: react-i18next 18.0.2 и axe-core 4.14.1 из #1575. Для `@lhci/cli` ≥ 0.16 (FSL) добавлен ignore Dependabot.
+  - Live-стенд: повторный старт Core с сохранением подписанных портов; диагностика R23 и footer.
 
 ### Полный Core на `main`
 
-На `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` [run 45248403311, job 137951197987](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/job/137951197987)
-начался 2026-11-23 в 19:24:45 UTC и завершился неуспешно. Итог **222 passed, 1 failed, 8 skipped, 1 flaky**.
-Все шесть результатов AUD-154 получены с retry 0, `stand_stop` прошёл. Учёт skipped ещё не подтверждён.
-[Receipt 14858397170](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/artifacts/14858397170) имеет SHA-256 `b8457ddf032c51598df063fd54245f1ae4dad05aa9b063217850ddf5bcb1154b`.
-Диагностические локации — mobile `notification-topics-delivery.live.spec.ts`, объявление 1111 и кадры 557, 584, 1265. Desktop `messenger-group-isolation.live.spec.ts` — объявление 254 и кадр 387.
-Обе mobile-попытки дошли до ожидания нативного уведомления после записи in-app. Обе подписки совпали по короткому отпечатку с ответами HTTP 410 в ограниченной выборке worker. Для привязки 410 к конкретному событию требуется дополнительное доказательство.
-Для desktop R23 редактированный лог фиксирует неуспешное ожидание входящего сообщения. Получатель и этап доставки по этому логу не установлены.
-Зачтённой пары нет. Нужны два последовательных green на неизменном стабильном SHA `main`.
+Зачтённой пары нет. Нужны два последовательных green на неизменном `main` с интервалом фактических
+стартов не менее двух часов. Во время серии ничего не сливать в `main`.
 
-Исторический [run 45216520095, job 137839027140](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/job/137839027140) на `a2d295bc7` не прошёл из-за ошибки консоли во flaky desktop footer. Итог **223 passed, 0 failed, 8 skipped, 1 flaky**.
-Все шесть результатов AUD-154 получены с первой попытки. [Receipt 14842876037](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/artifacts/14842876037), SHA-256 `290234f080d1ac92671b8fc551c11209c193b91fe191ed22cd594d54daa3c964`.
+| Запуск на `7e54feee` | Итог |
+| --- | --- |
+| [45248403311](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/job/137951197987), 2026-11-23 19:24Z | **222 passed, 1 failed, 8 skipped, 1 flaky**. Упал desktop R23 `messenger-group-isolation`, mobile `notification-topics-delivery` прошёл со второй попытки (push 410). Все шесть AUD-154 с retry 0. [Receipt 14858397170](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/artifacts/14858397170) `b8457ddf032c51598df063fd54245f1ae4dad05aa9b063217850ddf5bcb1154b` |
+| [45402369753](https://github.com/egorribun/university_ecosystem/actions/runs/45402369753), `schedule` 2026-11-24 13:20Z | Стенд не собрался: Alpine убрал `libssl3=3.5.9-r0` из индекса. Результата Core нет |
 
-Серия на `15d7cadf4` сброшена, её история приведена ниже.
+- На `a2d295bc7` и `15d7cadf4` серии тоже сорвались: flaky footer с ошибкой консоли, mobile map-zoom
+  52–55 мс при пороге 50 мс. Порог не меняется; код карты ускорен в #1576 и #1578.
+- Открыто: привязка HTTP 410 Web Push к событию и поколению подписки, доставка R23 за 60 секунд
+  на полном пути Caddy/auth/NATS.
 
-| Запуск | Итог | Receipt и SHA-256 |
-| --- | --- | --- |
-| [45139263654, job 137572924120](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/job/137572924120), `workflow_dispatch` | **224 passed, 0 failed, 8 skipped, 0 flaky** | [14803902142](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/artifacts/14803902142) `2dbc08cb2a65c1e46f34b9c7e87d92c40a43423d2ca3b991960c6df2c3013dce` |
-| [45166882952](https://github.com/egorribun/university_ecosystem/actions/runs/45166882952), `workflow_dispatch` | отменён, результата Core нет | — |
-| [45169213982, job 137709440731](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/job/137709440731), `schedule` | **222 passed, 1 failed, 8 skipped, 1 flaky** | [14824608244](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/artifacts/14824608244) `90d42470c6b089514deb5c9dffbda817a042c7b1c424b6510d78bb0d097c506c` (digest GitHub) |
+### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped)
 
-- Run 45166882952: attempt 1 завис на установке Chromium (шаг 9 шёл 82 минуты вместо обычных
-  ~36 секунд) и отменён до старта стенда. Attempt 2 отменён до старта, чтобы не дублировать плановый
-  прогон и не нарушить двухчасовой интервал.
-- В плановом прогоне все шесть случаев AUD-154 прошли с первой попытки. Упал mobile
-  `map-zoom-longtask`: long task 52–55 мс при пороге 50 мс в обеих попытках (фаза обновления камеры
-  после клика). Mobile notification topics прошёл со второй попытки: push `news` не пришёл в первой.
-- Нестабильность карты на mobile и доставки Web Push уже встречалась в прогонах 2026-11-23 на `ea78b1fcf`
-  и `facb80d35`.
-
-### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
-
-- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
-  (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
-- **ZAP.** Gate «medium or high» прошёл: 0 high, 0 medium, 6 low, 18 informational. 40024 не
-  повторился. Provenance привязывает отчёт к `source_sha` `4e9246c99`, этому запуску и
-  закреплённому образу ZAP; `origin_response_verified=true`. `coverage_complete=false` записывается
-  всегда, по дизайну. [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
-  имеет SHA-256 `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`.
-- **Nuclei** прошёл, отчёт пуст.
-  [Артефакт 14768600299](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299)
-  имеет SHA-256 `2a2cdadbe68f11f8092ba731dbf26c6707593323d654ecc6e8e85e72fac5be4f`.
-- Прежний DAST на `fc92e183` ([run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918))
-  давал 1 high (40024). Локально он не воспроизвёлся, ни на одном правиле, ни на полном скане.
-
-### Справочно
-
-- **Сборка Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main`. С `01a434839` APK берётся
-  диапазоном байт из официального ISO Alpine 3.23.8, с проверкой размера и прежнего SHA-256 для
-  каждой архитектуры. `libapk` и `apk-tools` закреплены на 3.0.9-r0.
-- **Нагрузка backend** (измерено 2026-11-21). Одна сессия aioboto3 на экземпляр `S3Storage` и
-  event loop, AVIF со speed 8, лимит памяти backend в Compose 768M. Холодная серия из 175
-  изображений: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, событий OOM нет.
-  `/api/v1/img` имеет отдельный бюджет `RATE_LIMIT_STATIC`.
+- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123):
+  ZAP 0 high, 0 medium, 6 low, 18 informational, provenance привязан к `source_sha`.
+  [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
+  `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`. Nuclei прошёл с пустым отчётом.
 
 ## Аудит: текущий итог — 511/512
 
@@ -107,13 +66,11 @@
 
 The current policy-file inventory is **524 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
 
-### Открытые находки
-
-Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
-
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на неизменном source `main` (эквивалентность принята владельцем), включая read-receipt live spec. После красного второго запуска серия сброшена; для текущего `main` нужны новые доказательства. |
+| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на неизменном source `main` (эквивалентность принята владельцем), включая read-receipt live spec. Для текущего `main` нужны новые доказательства. |
+
+Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -121,158 +78,43 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | --- | --- |
 | 1. Решение и документы | Выполнен. |
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
-| 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
-| 4. Визуал и performance | Проверка Stage 4 — 96 PNG с sidecars, 2 serious `color-contrast` на dark390 `/schedule` RU/EN (белый на `#38bdf8`, 2.14:1). На `a2d295bc7` serious-находки были в 28 вариантах. Утверждён только Home12, approval нового пакета не получен. |
-| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён на disposable owned stand. Отдельно проверены S3 и API avatar. Браузерная проверка на кандидате ожидается. |
-| 6. Выпуск | Собраны предварительные проверки на `7e54feee`. Freeze и публикация v1.0.0 ожидаются. |
+| 3. Core и продукт | Сценарии и матрица готовы. Локальные проверки R23, R29, R40, R59, R67 и R83 прошли (см. ниже); приёмка на подписанном стенде не проведена. |
+| 4. Визуал и performance | Пакет 96 PNG на `7e54feee` дал 2 serious `color-contrast` на dark390 `/schedule`; они и тот же дефект на остальных brand-поверхностях исправлены в #1578. Нужен новый пакет после merge; утверждён только Home12. |
+| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён (ниже). Браузерная проверка avatar на кандидате ожидается. |
+| 6. Выпуск | Предварительные проверки собраны на `7e54feee`. Freeze и публикация v1.0.0 ожидаются. |
 
-Галерея — aggregate SHA-256 `6dd69c38516e8f4bf7d52d863bf0321fe873d5b85f69f146987d67d2d0671a0b`, safe summary SHA-256 `42df1d91ca9607015a39959ab41f64338c0a6f8b93febadc8646da7b01bd4dee`.
+Бюджеты сборки на `7e54feee`: main JS 199,10 KiB raw, начальный JS 412,67 KiB gzip, крупнейший lazy-чанк
+217,69 KiB gzip, MapLibre 6.18.0 289,41 KiB gzip
+([bundle report 14855552498](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14855552498)).
 
-Бюджеты сборки на `7e54feee` подтверждены: main JS 199,10 KiB raw, начальный JS 412,67 KiB gzip,
-крупнейший обычный lazy-чанк 217,69 KiB gzip, MapLibre 6.18.0 289,41 KiB gzip.
-[Bundle report 14855552498](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14855552498),
-[MapLibre inventory 14854778672](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14854778672).
-Значение `runtimeClosure=unproved` сохранено в артефакте.
-В одном локальном SSR-прогоне на production frontend сборке `23fcae76` до открытия карты на загруженном `/schedule` запросов точного MapLibre vendor не было. После открытия карты через интерфейс vendor, компонент, CSS и worker вернули 200 и появился canvas. Service worker был заблокирован, стиль и тайлы синтетические. Проверка wheel/zoom завершилась по тайм-ауту. Итог прогона failed. SHA-256 receipt `0f3475ec5b6cb5b7c05894bf527e489a900dc716179c4f07f4a1a726fb3ca0aa`.
-В отдельной проверке нативный wheel дошёл до canvas и изменил zoom с 17 до 16,411. Карта завершила движение, но `z` остался пустым в router и URL. Ожидание URL завершилось по тайм-ауту. Unit-проверка штатного MapLibre 6.18.0 воспроизвела потерю `originalEvent` на первом одиночном wheel с отложенной классификацией. SHA-256 browser receipt `622fbc28d7c27ea3be017f53627884fead9a1f44402b076e2df1ffea39029cf9`.
-Пассивное наблюдение на `50e1ca03` подтвердило: после первого одиночного wheel `zoomend` и `moveend` пришли без `originalEvent`, а URL остался прежним. После пары wheel с интервалом 33 мс оба события передали исходное событие и `z` обновился. Карта полностью загрузилась между наблюдениями. Контроль кнопки прерван из-за ошибки кодировки тестового локатора. SHA-256 receipt `5dac1585241dc977d564308bf037ad1887ff19ae245164485408e909687fe8bd`.
+### Локальные проверки этапа 3 (2026-11-24)
 
-Точная исходная production-сборка `519e87bc` прошла сборочный preflight с принадлежащим прогону loopback mock. В Chromium одиночный wheel после полной загрузки изменил zoom с 17 до 16,41055. В `zoomend` и `moveend` снова отсутствовал `originalEvent`, а `z` остался пустым. Сравнение с кандидатом остановлено на условиях теста: фактический интервал парного ввода превысил 40 мс, а проверка нижней границы приняла погрешность zoom за движение. Тестовые пороги сохранены, процессы завершены. SHA-256 receipt `917cbd062fc12203a5473aaf9612b34eaf763523a60bc0554c6960b14aadd693`.
+Это изолированные локальные прогоны, а не приёмка на подписанном стенде. Детали — в матрице,
+SHA-256 receipts — в версии этого файла на `7d7125330`.
 
-В парном сравнении с исправленным тестовым вводом две быстрые пары в исходной сборке уложились в 40 мс. В кандидате тот же одиночный wheel после полной загрузки изменил zoom с 17 до 16,41055 и записал `z=16.4` при отсутствии `originalEvent`. Вместе с быстрым вводом, нулевым wheel и обычными кнопками прошли пять из восьми сценариев. Сценарий до загрузки зафиксировал конечный `z=17` после intro. В трёх overlap-сценариях кнопка не дала наблюдаемого движения в требуемом направлении, поэтому поведение при перекрытии и бюджет 50 мс остаются открытыми. SHA-256 receipts исходной сборки `9f0926e0b7130255ee77a5611887d1af9bb85d65c04bf7327df5ad349b85564d`, кандидата `5559be2570c9f4ac8be1132a015aa30f9ddf98e924df7234fc8913364d7adea5`.
+| Строка | Подтверждено локально | Открыто |
+| --- | --- | --- |
+| R23 | Go-хаб с ACK допуска: 671 тест с race, Chromium r1255 на обоих хабах | Полный путь Caddy/auth/NATS за 60 секунд на hosted Core |
+| R29 | Матрица прав групп на ASGI и на реальном HTTP + PostgreSQL с RLS (`alembic upgrade head`) | Подписанный браузерный стенд |
+| R40 | `/stats/summary` в пределах 5 SQL на PostgreSQL + Valkey, свежие данные после инвалидации | Заполненный браузерный сценарий на PostgreSQL/Caddy |
+| R59 | Drawer и быстрые нажатия 390×844, максимум кадра около 16,8 мс | Штатный сценарий на полном стенде |
+| R67 | Production SSR 500 и восстановление в изолированном Chromium | Hosted production-wrapper preflight |
+| R83 | Messenger smoke в Firefox r1572 и WebKit r2388 (mocked) | Hosted nightly, физический Safari |
+| Avatar/S3 | S3 put/head/get/delete, ASGI avatar PNG → WebP в S3 | Браузер и Caddy |
 
-Для платформенного реестра выписаны все 63 строки на `8383ac1d`, включая семь строк с alias. На `7e54feee` состав тот же, в сравнении изменилась строка SEC-07. Проверены 99 исторических ссылок: 98 целей существуют в текущем дереве, у BE-01 зафиксирована историческая миграция и найдена актуальная точка проверки. Исторические статусы сохранены. Перепроверка поведения и доказательств на финальном RC остаётся открытой. SHA-256 инвентаря `ebf88d577e1fefb8e5d300bdd3844dc08adcff7cebda966fe521b35314dff662`. [Платформенный реестр](../../audits/INDEX.md#findings-ledger).
+- Карта на production-сборке: первый одиночный wheel после загрузки MapLibre 6.18.0 приходит без
+  `originalEvent`, поэтому `z` в URL не обновляется. Поведение при перекрытии ввода и бюджет 50 мс открыты.
+- News на 720×450: поиск высотой 36 px и английская кнопка `All` шириной 39,23 px меньше цели 44×44.
+- CSRF: отказ до обработчика помечен `X-CSRF-Rejected: 1`. Привязка CSRF к сессии — черновик вне `main`.
 
 ### Scoped restore DB/S3 (§7.3)
 
-На одном disposable owned stand на `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` проверены Alembic `202611200001`, 155 таблиц и 385 строк, 35 исходных объектов и 35 версий, multipart 0 и семь DB reference columns. Source DB и bucket совпали с baseline, два manifest receipts совпали.
-Две DB→S3Storage пробы story/news совпали побайтно. SHA-256 manifest `0b296bb76e904327b518136e3dd1afd0f3f4b783b338f9fcc99253ba31ec5cd6`, dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`, source DB `2d2876e29d77f9f614c8b951ae693aa220e487455abdfac05823c0d47bd930f1`, table counts `a79a3014a35901321ad030a0d938658acfe5725800552ea13aa9511d477823f1`.
-Это quiesced локальная проверка без гарантии отсутствия внешнего writer и без RPO/RTO.
-Teardown подтверждён по signed preinventory и bounded Docker events. Удалены 24 контейнера, 5 сетей и 7 томов, остатков нет. Приватные PNG, sidecars и receipts сохранены, другие проекты не затронуты. Заключительная проверка привязок API для avatar после адресного старта не прошла, загрузка не выполнялась.
-
-### Локальная браузерная проверка R59
-
-В Chromium headless shell с мобильной эмуляцией 390×844 и обычной анимацией прошли три открытия drawer и шесть нативных нажатий с проверкой порядка, фокуса и конечного маршрута. Тест использовал production SSR-сборку `23fcae76`: её исполняемые исходники совпадают с `8383ac1d`. На синтетическом JWT/JWKS `/schedule` вернул 200. Первый запуск остановился на DNS Chromium до загрузки интерфейса, повтор с разрешённым loopback прошёл. За 51 кадр drawer наблюдался максимальный интервал около 16,8 мс. Один локальный прогон оставляет открытой приёмку штатного сценария на полном стенде и причину перемежающегося сбоя mouse root-hit. SHA-256 receipt `f8ab926f2d8528cbf3770514066d424280c8704eb713d420c4dfddf7e17e14e8`.
-
-### Локальная проверка WebSocket для R23
-
-На закреплённом Go 1.26.11 оба варианта прошли реальный loopback upgrade на `f5f871ed`: прежний хаб и кандидат с подтверждением успешного допуска. Проверены два сокета, одноразовый билет, свежее подключение к комнате, leave/rejoin и подписанный resume. Кандидат отправил ACK только запросившему сокету и оставил replay barrier активным. Nonmember и чужой cursor не получили подтверждение. Membership backend и JetStream были синтетическими. SHA-256 evidence `e0fc8ff7a5795d8b188aa651a219f0bfe4ef66bb144ae46f9b9e9133afba3f21`.
-
-Итоговый вариант ws-hub прошёл 671 верхнеуровневый тест в четырёх пакетах на Linux с Go 1.26.11 и race detector. Нормализатор проекта подтвердил 3819/3819 statements, 6038/6038 строк и все 32 блока, затронутых диффом. Формат Go coverprofile учитывает statements. GolangCI-Lint 2.14.0 завершился без замечаний. SHA-256 evidence `038d55c816025be3babaf89a1497f16006bd36439571f2f4822d4f7e31ccfb2e`.
-
-На базе `83ee1a26` Chromium r1255 с итоговым frontend прошёл по два сценария с обоими Go-хабами. Участники подтвердили допуск на новом хабе. Прежний хаб сохранил обычное подключение без подтверждения. Оба Go fixture завершились по owner STOP, процессы и порты освобождены. Новый браузерный запуск сохранил предупреждение Node о конфликте настроек цвета в test worker. Отдельный запуск прежнего хаба завершился без предупреждений. Прошли также TypeScript, девять контрактов R23 и сборка списка 232 live-тестов. В отдельном наборе Vitest прошли 467 тестов с порогом 100% по четырём изменённым файлам. Полный hosted Core, весь путь Caddy/auth/NATS и подтверждение доставки в пределах 60 секунд остаются открытыми. SHA-256 браузерного evidence `2aaf1b35fab2dc601c372d781acee685a6023e33151a53183ce00cabdaf70905`. SHA-256 локального V8 отчёта `617592f57ea4bcebd7eeb326c4a98ff998118b751594ce469dd3fdeee5ac80bd`.
-
-### Локальная проверка Messenger в Firefox и WebKit
-
-Два desktop smoke на 1280×720 прошли в Firefox r1572 и WebKit r2388 из закреплённого Playwright 1.65.1. Проверены открытие диалога, исходное сообщение, отправка и отрисовка результата. Первый прогон остановился на тестовом ответе с лишними полями участника. Исправленный fixture прошёл действующий валидатор, по одному прогону на браузер без retry. Использованы stock frontend `23fcae76` и mocked API/WS. Hosted nightly и физический Safari остаются отдельными проверками. SHA-256 evidence `473b9955b37534d409583138797207472a02bb8f19298feb79bd304235264d55`.
-
-### Групповые операции Messenger на ASGI
-
-На `50e1ca03` прошёл 21 целевой тест R29 с SQLite. Владелец и участник могут добавлять пользователей и переименовывать группу. Владелец может удалить другого, участник может выйти сам, а удаление другого участником возвращает 403 без изменений в БД. Посторонний получает одинаковый 403 для группы и DM до раскрытия типа. Участник DM получает отказ на каждой групповой операции.
-
-На базе `bb206da5` реальный HTTP-обработчик и PostgreSQL подтвердили ту же матрицу на синтетических участниках. Тест проверил небайпасную роль, активную RLS для `chats` и `users`, контекст tenant и использование одной сессии БД обработчиком и сервисом. Использована схема baseline `202611020000` и синтетические Redis и ws-hub. Первую попытку остановила несовместимость psycopg с Windows ProactorEventLoop. Отдельный тестовый драйвер с SelectorEventLoop завершил сценарий успешно. Принадлежащий тесту контейнер удалён. SHA-256 receipt `aab526689b1d7ec91e19bc62cda1a55d14afa9afe4561ae8e4a1a784a0a16258`.
-
-На точном `60d9f338` штатный `alembic upgrade head` применил миграцию `202611200001` поверх baseline в отдельной БД. Ledger подтвердил head до и после HTTP-сценария. Тот же тест прав и RLS прошёл без пропусков, а контейнер теста удалён. Проверка подписанного браузерного стенда остаётся открытой. SHA-256 schema receipt `dc3282eb86ddc7dca0c6b87b34a95386503f7b5bf1547a5a6904f2c9113feb80`, JUnit `2076f3cfb643ef60ca2498608ee5972df896aec471e58b100ef21f64c3d0f54e`.
-
-### Контраст Messenger на локальной сборке
-
-Диагностика на Chromium r1255 и production frontend `23fcae76` повторила serious `color-contrast` в обеих темах. На 390 px второй текст баннера переподключения дал 2,00 и 2,79 при пороге 4,5. На 1440 px замеры в диалоге во время возможной анимации открытия дали до 1,12 при том же пороге. На 768 px видимый баннер перехватывал обычное нажатие на «Новый чат» в состоянии переподключения.
-
-На production-кандидате от `519e87bc`, с изменениями R23, прошли шесть синтетических сценариев Chromium на 390/768/1440 px в обеих темах. Проверены геометрия и axe для списка и диалога после завершения анимации. В отдельном сценарии видимый баннер перекрывал центр кнопки «Новый чат», а обычный клик открыл диалог. Первый транспортный тест остановился на запросе билета, который общий мок пропустил в статический сервер. После добавления точного мока билета тот же production build прошёл подключение, уход в offline и повторное подключение при синтетических API и WebSocket. Контейнеры удалены, связка зависимостей восстановлена. Приёмка на живом стенде и базовые скриншоты Linux остаются открытыми. SHA-256 receipt матрицы `7550d46f77b260b94834a54ee178e08ac055d9cfc12af44a75da5bd80497a2f8` и отдельного транспорта `0e6e7a287e8031bbc2354355ae0fb2de94d3447b45d0258fa1edea467c34bacd`.
-
-### Перекомпоновка News и Messenger на 720×450
-
-Локальный Chromium использовал production frontend с исполняемыми файлами `60d9f338` и синтетический API. В Messenger прошли русская и английская версии, навигация клавиатурой, проверка горизонтального overflow и минимальные цели 44×44 px. В News в обеих локалях поиск оказался высотой 36 px, а английская кнопка `All` — шириной 39,23 px. Клавиатурный сценарий и проверка горизонтального overflow в News дошли до измерения целей. Исправление и подписанная приёмка остаются открытыми. SHA-256 receipt `34a4f043cf2f17f5740f3ec45809442a8711bd5ed279c9a65b753ba17d1eb140`.
-
-### Локальная проверка геометрии предложения Push
-
-На stock frontend `23fcae76` в Chromium прошли 360×640, 390×844, 768×1024 и 1440×900. На двух мобильных ширинах предложение оставалось в пределах окна и не перекрывало видимую нижнюю навигацию. Сценарий использовал mocked API и Notification. Проверка на подписанном стенде ожидается. SHA-256 receipt `8016c94a715591198ccd0d77049a946d9b042c129483b84fea2c83ef2456a2a7`.
-
-Live-сценарий доставки теперь проверяет, что сохранённая подписка принадлежит выбранному синтетическому получателю. Синтетические ответы с чужим или отсутствующим владельцем отклоняются. При ошибке проверка выводит только булево значение. Коллекция сценариев не изменилась. Привязка исторического 410 к событию и поколению подписки остаётся открытой. SHA-256 receipt `89e48fde5fb9d42b8afb19ce8993a230f2e6875f4f4c20ceb9b69be54e25f7b7`.
-
-### Подготовка привязки CSRF к сессии
-
-Отказ CSRF до обработчика помечен `X-CSRF-Rejected: 1` и `Cache-Control: private, no-store`. Обычный 403 от обработчика проверен отдельно. Статус, локализованное тело и правила проверки не изменились. Локально прошли 75 CSRF-тестов, 147/147 statements и 52/52 ветвей `csrf.py`. Сессионная привязка, проверка маркера через gateway и безопасное восстановление очереди остаются открытыми. SHA-256 receipt `f7758e5c88b058ecb82a210438be66e96038ca3df1a3dbb8279f44a57e2d5ea7`.
-
-Изолированный прототип вычисляет значение для JTI уже проверенной сессии. Прошли 16 тестов с реальным JWT signer и синтетическими DB/Redis, включая прямой выбор Bearer при наличии cookie, выбор identity через проверенный gateway и штатный обработчик билета WebSocket. Прототип оставлен вне исходников приложения. Проверка нового значения до обработчика и совместимость со старыми сессиями и очередями остаются открытыми. SHA-256 receipt `6af53d3245dda85ed671b94fc0800ba207563e2f698d20d9fc31beacf0c34a95`.
-
-Частный кандидат выдачи на `60d9f338` сохранил совместимость с прежней проверкой MAC и прошёл 12 pytest и два Vitest. Тест воспроизвёл гонку: поздний ответ гостевого запроса перезаписывает значение, выданное при успешном входе. Включение проверки остаётся открытым до согласования формата, обработки старых клиентов и сохранения очереди. SHA-256 изолированного patch `77392d3dff5281d7439cadb10eb6cc7f31bc6b90030b32c4d0fc679e12ce08ee`.
-
-### Изолированная проверка R40
-
-Chromium получил 12 ответов реального `/stats/summary` из ASGI/SQLite на `a51fdadf`. Ответы совпали побайтно с контрольными запросами,
-запасные endpoints не вызывались. Прошли RU/EN, ширины 390/768/1440 и обе темы. Браузер использовал тестовый профиль и сборку
-frontend с `23fcae76`, чьи исполняемые исходники не изменились на `a51fdadf`. Приёмка на стенде с PostgreSQL и Caddy ожидается.
-SHA-256 манифеста `6194adb2fd6f378f0bd9910f7c62fe3b748e3e9dbf1036dcfadbf6e0fd793323`.
-
-На `40b9505a` два изолированных прогона с PostgreSQL дали HTTP 200 на ASGI login. Первый `GET /stats/summary?period=90d` в каждом прогоне
-выполнил семь SQL-команд при неизменном бюджете тестового клиента пять. В диагностическом повторе две команды классифицированы как SET,
-одна относится к пользователю, три к данным посещаемости, оценок и участия. Происхождение ещё одной команды не установлено.
-Браузер и JWKS в этом прогоне не проверялись. SHA-256 доказательства `71b2fdf8012f9e5016ee0274e9b2607d6755590e0b4fa3ba5508cabf898d1685`.
-
-На изолированном PostgreSQL кандидат на базе `5ad9ad01` вернул HTTP 200 на холодном `/stats/summary` при тех же пяти допустимых SQL-командах.
-Недостающие секции читались одним SQL-запросом. Все восемь состояний кэша дали те же данные и ETag, что отдельные endpoints. На полностью тёплом кэше выполнены три SQL-команды без чтения статистики.
-Четыре файла приложения в проверенном архиве сверены с локальным исправлением. Проверка использовала ASGI и тестовый кэш. Браузерный прогон на полном стенде ожидается. SHA-256 receipt `a3bd96b80195133b10f92b3ccc29a0c5ff603038591eeae7fe06e841a8a9b4d4`.
-
-На `a6383e594` через loopback прошли штатные HTTP login, выдача cookie и проверка RS256 по JWKS. HTTP summary дал 200 и совпал побайтно с прямым ASGI-ответом на PostgreSQL, выполнив три SQL-команды при бюджете пять.
-Проверка `/users/me` остановилась на шести SQL-командах при том же лимите. Chromium не запускался.
-SHA-256 доказательства `0bb8dd9ff06c59bacee6360e9dc63f78aad661640d43de35020ca704a79263ca`.
-
-Сравнительный тест с управляемой паузой и `MemoryCache` показал, что пакетное чтение на `a6383e594` может перезаписать свежую оценку старым снимком после инвалидации. При той же последовательности на `5ad9ad01` свежая оценка сохранялась.
-Пакетное изменение остаётся локальным до проверки исправления гонки. SHA-256 отчёта `4a4a0f62ac9a39a97a70fa00149c713082ac4a3b34649de66eb1d1af5dd2b0f7`.
-
-Изолированный Valkey 9.1.2 подтвердил восемь сценариев для прототипа условного заполнения существующего ключа на базе `5c136c69`. После DELETE, замены записи или истечения TTL устаревший writer терял право записи. Повторная резервация сохранялась. Контейнер, сеть и каталог конфигурации удалены. Подключение к штатному обработчику, другие конфигурации кэша и сбой инвалидации ещё требуют проверки. SHA-256 receipt `fdc7daeea7cc2f1503cf3d1ad29a4273e73e9ebb953bbefec51f348bb8edfeae`.
-
-На одинаковых изолированных данных PostgreSQL с тёплой сессией в fakeredis и без ожидающей заявки на смену email JOIN-кандидат сократил `/users/me` с шести до пяти SQL-команд при неизменном бюджете. Сравнивались `5c136c69` и кандидат, файлы приложения которого совпадают с локальным коммитом `a52ff338`.
-В обоих вариантах сервер вернул 200, поля профиля совпали с ожиданиями и появилась одна запись аудита. Тестовый шлюз с ограничением SQL вернул 200 после исправления. SHA-256 receipt `a02b654453b60d888e8b209ebdf8a6b0db603d6ee38ec04d298ae2e3e14363f2`.
-
-На тех же двух исходниках с одинаковой активной заявкой на смену email результат изменился с семи до шести SQL-команд при бюджете пять. Оба backend-ответа дали 200, ожидаемое значение pending email и по одной записи аудита. Тестовый шлюз отклонил оба ответа по бюджету. SHA-256 receipt `c753d0c0f47cc6133471a24e8d3240b358c793a3ffffe40216a0d4289205bb28`.
-
-В повторе на изолированном PostgreSQL сравнивались точный `a52ff338` и кандидат, который формирует pending email в ответе без изменения строки пользователя. Классификатор зафиксировал `UPDATE users` в исходном варианте и его отсутствие у кандидата. Число команд снизилось с шести до пяти, тестовый шлюз вернул 200. SHA-256 receipt `11171ab4bd0ebc8d7ee468d218201ff0a946aca189908d661bba6bebf11df6b5`. Этот кандидат остался в изолированной копии из-за привязки Semgrep к `auth_service.py`.
-
-Вариант через штатный профильный сервис на базе `6aec2ca` повторил результат PostgreSQL при прежнем лимите: шесть команд в исходном варианте, пять и HTTP 200 на тестовом шлюзе у кандидата. Кандидат не выполнил `UPDATE users`, сохранил значение в БД, правильно отобразил активную заявку и добавил одну запись аудита. Проверка использовала HTTP login, RS256/JWKS и fakeredis для тёплой сессии. Временные базы и ключи очищены. Браузерная приёмка на полном стенде ожидается. SHA-256 receipt `ae8f627a34f381757f850a4863cb108338ea49a1a3aefb6333242ebc486f87be`.
-
-На точном `8383ac1d` проверены все восемь сочетаний попаданий в кэш статистики, каждое с тёплым и холодным кэшем сессии. После штатного HTTP login и проверки RS256/JWKS все 16 ответов `/stats/summary` прошли лимит пять и совпали по payload и ETag. Полностью тёплая статистика потребовала две SQL-команды, любой промах — четыре, включая один запрос данных. Проверка использовала PostgreSQL и fakeredis. Гонка записи после инвалидации и штатный браузерный прогон остаются открыты. SHA-256 receipt `4c8a26fbee536867d72efa73f22f7070740b47ec5c2a954709e3dc5bfc5c94bb`.
-
-На том же базовом SHA прототип дочитывания на PostgreSQL вернул HTTP 200 за четыре SQL-команды в стабильном смешанном состоянии и за пять после параллельной записи и подтверждённой инвалидации. Второе чтение коснулось только оценок. Ответ и ETag отражали обновление, удалённый ключ остался пустым. Для прогона использовались fakeredis и тестовое внедрение защитного адаптера через READ DI. SHA-256 receipt `3f909ae5b37f99b890b5470e2457cabc85af1083e7562218f0a2806c32f443a0`.
-
-На базе `f5f871ed` кандидат с обычным READ DI повторил результат: четыре SQL-команды в стабильном состоянии, пять при подтверждённой инвалидации, HTTP 200 в обоих случаях. Защитный адаптер использовал тот же RedisCache с fakeredis, удалённый ключ остался пустым, ответ и ETag обновились. Redis/Tiered с реальными процессами, другие backend и ошибка второго SQL требуют отдельных прогонов. Disposable PostgreSQL superuser подтверждает счётчик команд, проверка изоляции RLS этим прогоном не покрыта. SHA-256 receipt `1b668032ad38ed18bdd423a655871adffbb3ead8efbfadcc5d164282dc63f289`.
-
-На изолированном NATS 2.15 с `allow_msg_ttl=true` подтвердились физическое истечение резервации и условная запись по revision. Прежние DELETE и PUT отменяли попытку записи старого значения. Повторная резервация сохранилась после истечения предыдущей. Отдельная ветка без TTL остановилась при подготовке второго бакета. Штатный NATS-адаптер остаётся на проверке. SHA-256 receipt `e8d0fc34e752e9669da30305fbf90cc481f016ce17456c1e645ee0520a8fb5e1`.
-
-В следующем прогоне на том же NATS проверен кандидат адаптера с синтетическим репозиторием. В бакете с TTL сводка и одиночный запрос прогрелись, успешный результат пережил физический срок маркера. В отдельном бакете, созданном без TTL, читается ранее записанное значение, а холодные результаты вычисляются заново без заполнения кэша. Это ограничение кандидата остаётся открытым. SHA-256 receipt `981fe593d9102ecdecbb077bb61f01feedc844a4f188b49dc50c410b2418103f`.
-
-Отдельный тест NATS без TTL подтвердил, что сравнение с состоянием «ключ отсутствует» пропускает устаревшую запись после истечения, вытеснения или точечного purge tombstone. При проверке прежней положительной revision запись в каждом сценарии отклонялась. Этот способ с нулевой ожидаемой revision исключён из кандидата. SHA-256 receipt `c6b6ba3da2fa86bef77ec3af5ce8e02a5fa341fb44f19ae78fc88bef552ae597`.
-
-На закреплённом NATS 2.15.0 свежая условная запись одного синтетического ключа без TTL прогрела `NatsKVCache`. После пересоздания потока с тем же именем сервер повторно выдал прежнюю положительную revision и принял отложенную запись по ней. При вытеснении, истечении и точечном purge внутри прежнего потока запись по старой revision отклонялась. Три отдельные проверки пустого тела DEL дали расхождение с представлением значения в клиенте. Кандидат требует дополнительной проверки принадлежности резервации текущему потоку. Контейнер, сеть и частный каталог прогона удалены. SHA-256 receipt `b0392f8c9fa564023616a67bed618b94f05865cd2656376bb8e4ba117554ffbf`.
-
-На том же NATS кандидат с повторной проверкой резервации перед записью прогрел по три синтетических ключа в бакетах с TTL и без него. Изменение последнего сообщения потока, точечный purge и пересоздание потока с повторной revision отклонили отложенную запись. Свежее значение в пересозданном потоке сохранилось. При потере ответа после записи адаптер вернул неопределённый результат. Контейнер, сеть и частная конфигурация удалены. Проверки приложением через HTTP, покрытия объединённого кандидата и работы под ограниченными внешними ACL остаются открытыми. SHA-256 receipt `a4d8ccd18947509c1faa8b07e7b021286aa7894b0e9df6f32263b122a5fa766e`.
-
-На реальном Valkey 9.1.2 проверены физический TTL маркера, конфликт при DELETE/SET и повторная резервация. Два Tiered L1 не переносили маркер и сразу читали готовое значение из Redis. Имитация потери ответа после успешного EXEC показала, что транспортный WatchError может означать уже записанное значение. Коррекция классификации прошла отдельно в офлайн-тестах. SHA-256 receipt `ba020234bf54f0ec6fdecfc7eb487554e36b79f01a35b14847200df5d259420c`.
-
-Изолированный кандидат на базе `9d992cfa` обработал подписанные HTTP-запросы со штатным READ DI, PostgreSQL app-role без superuser и реальным Valkey 9.1.2 для статистики. Стабильная сводка выполнила четыре SQL-команды, управляемая гонка после инвалидации пять, в обоих случаях HTTP 200. Удалённая оценка не публиковалась повторно, ответ и ETag отражали обновление. Одиночный endpoint оценок выполнил четыре команды при холодном кэше и две при тёплом, Valkey подтвердил положительный TTL. Сессии использовали fakeredis. Прогон не покрывает изоляцию RLS, rolling deployment, сбой DELETE и альтернативные backend. SHA-256 receipt `d901a9743c2cfa8a15180eb8f66af6045dfa63785cc13827533250868bcdb80d`.
-
-После переноса кандидата Redis/Memory/Tiered на `519e87bc` прошли 229 целевых тестов. Итоговый вариант достиг неизменного порога 100% по четырём файлам: 524/524 statements, 178/178 branches и 212/212 изменённых исполняемых строк. Эта проверка использовала SQLite и fakeredis. Подготовленный вариант остаётся локальным до проверки совместимого поведения NATS и повторной приёмки через Valkey и PostgreSQL. SHA-256 receipt `4d4fb3340f7ac08b05900c74fdf96e3719c7a52a27a13b219f54c8bcdc8b69aa`.
-
-Объединённый кандидат Redis/Memory/Tiered и NATS на базе `bb206da5` прошёл 277 целевых тестов с неизменным порогом 100% для четырёх затронутых файлов. Измерено 648/648 statements, 228/228 branches и 336/336 изменённых исполняемых строк. В тестах обработчика и NATS использовались синтетические зависимости. Проверки реальной связки HTTP и NATS, восстановления снимка NATS и работы со старым безусловным writer за пределами этого отчёта. SHA-256 receipt `ec0fc6c60b749118b489fb4dbc82ad5c7a39028e176202c06ba02cfb134d7fc9`.
-
-Те же четыре файла проверены через подписанные локальные HTTP-запросы, обычный READ DI, реальный Valkey и PostgreSQL с ролью без superuser. Стабильная сводка выполнила четыре SQL-команды, сводка при инвалидации пять, одиночный endpoint оценок четыре на холодном кэше и две на тёплом. Сессии использовали fakeredis. Контейнеры и сеть прогона удалены. Браузерная приёмка на подписанном стенде остаётся открытой. SHA-256 receipt `487f2ba29c4d0610e72d1e3ec4e720c357a28bfad0e2a624506e9fc775e41598`.
-
-Парная проверка подписанных локальных HTTP-запросов на `60d9f338` прошла с PostgreSQL, штатным READ DI и реальным NATS в двух режимах TTL. В каждом режиме холодное чтение и чтение после подтверждённой инвалидации выполнили по четыре SQL-команды при бюджете пять. Тёплые чтения выполнили по две. После обновления оценки отдельным PostgreSQL writer значение и ETag обновились, остальные секции сохранились. Сессии и rate limit использовали fakeredis. Проверка не охватывала конкурентную гонку, физическое истечение готового NATS payload и Caddy. Бакеты, контейнеры и сеть прогона удалены. SHA-256 receipts noTTL `0772a53f753446bb3c125deb3c11dc4e53565f77a4bf637ca85800cd338c3c38`, TTL `1db7d66a42962cd3a3eb35e60af52163878c49adc9e7795731ed998829f443ee`.
-
-### Изолированные проверки S3 и avatar
-
-На точном локальном `24f312fa260f92759266d4271367fcb98ec4fce8` подтвердились операции S3 записи, проверки наличия, чтения
-и удаления. Подписанный SDK GET дал HTTP 200, а неподписанный запрос и подмена пути дали 403.
-SHA-256 receipt `1b20dbd5792d00a484111a41931e6d933af6822a959a4e5e4fc0681cc90b98bf`.
-
-На том же SHA ASGI-маршрут avatar принял PNG (HTTP 200), сохранил ссылку в SQLite и записал WebP в реальный S3.
-Некорректный файл получил 415, ссылка и объект сохранились. DELETE удалил ссылку и объект. В обоих запусках
-временные контейнеры и сети очищены. В проверке avatar пользователь передан тестовой зависимостью,
-malware scanner выключен тестовой конфигурацией. Браузер и Caddy не запускались.
-SHA-256 receipt `280a9e50992d10582e9a3c4a3ddd305cc368c6c378c0abe4e1abba98bf015e74`.
-
-Production frontend на `bb206da5` собран для браузерной проверки avatar. Два запуска остановились до открытия браузера на проверке loopback-публикации порта S3. Диагностический повтор получил успешный Docker inspect с пустым списком опубликованных привязок порта. Принадлежащие прогонам контейнеры и сети удалены. SHA-256 манифеста сборки `01d192799882518726f31929d4b7637cf51c79f11b98868ff378c15480e11f96`, диагностического receipt `46c65d15c032c5d3ad5aaa382480df5d0aa1c9c4b6cad92a26e629c4b42a40a3`.
+На disposable owned stand на `7e54feee` проверены Alembic `202611200001`, 155 таблиц и 385 строк, 35 объектов
+и 35 версий S3. Source DB и bucket совпали с baseline, две пробы DB→S3Storage совпали побайтно.
+SHA-256 manifest `0b296bb76e904327b518136e3dd1afd0f3f4b783b338f9fcc99253ba31ec5cd6`,
+dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`.
+Это quiesced локальная проверка без гарантии отсутствия внешнего writer и без RPO/RTO. Teardown
+подтверждён: 24 контейнера, 5 сетей и 7 томов удалены, другие проекты не затронуты.
 
 ## Решения владельца (действующие)
 
@@ -282,27 +124,26 @@ Production frontend на `bb206da5` собран для браузерной п�
   форм с `data-csrf="header"`, 10055-6 — принятый риск low, 10055-4 — исправление (2026-11-21). Любое
   другое исключение — только с согласия владельца.
 - Демо-изображения хранятся в репозитории (2026-11-21).
-- Новые PR облачного агента интегрируются пачкой, без экспериментов с новыми workflow.
-- Dependabot npm принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
-  привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят: его чанк весит 289,41 KiB, и
-  ADR-049 поднят до 290 KiB для этой версии (2026-11-22). jsdom 31 принят: проверки inline-стилей
-  читают объявление через `expectInlineStyle`, а не вычисленный стиль, который теперь раскрывает
-  `var()`. Удерживается @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией
-  FSL-1.1-Apache-2.0, которой нет в `allow-licenses` в `.github/dependency-review-config.yml`.
+- Dependabot принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
+  привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят (ADR-049 — 290 KiB). jsdom 31 принят.
+  `@lhci/cli` держится на 0.15.1: 0.16 тянет `sentry` под FSL-1.1-Apache-2.0; Dependabot его игнорирует
+  (2026-11-24).
 - Мутационные линии вне объёма MVP (2026-11-13).
 - Для frozen RC использовать smoke на X и release с Y после проверки ancestry и единственной
-  разницы `quality/frozen-rc.json`. Нужны успешный доверенный full-smoke receipt для X и
-  собственные обязательные проверки для Y.
-- Для R83 обязательны базовые mocked-сценарии Messenger в desktop Firefox и WebKit. Физический
-  Safari проверяется отдельно. PR Owned Live остаётся advisory, Chromatic выключен.
-- Независимое review auth, сессий и данных провести на финальном кандидате до freeze. Риск
-  шифртекста reset-ссылок в JetStream допускается для синтетического демо после подтверждения
-  изоляции Compose и отсутствия реальных данных. Записать условия и ограничения в release notes.
+  разницы `quality/frozen-rc.json`.
+- Для R83 обязательны mocked-сценарии Messenger в desktop Firefox и WebKit. Физический Safari проверяется
+  отдельно. PR Owned Live остаётся advisory, Chromatic выключен.
+- Независимое review auth, сессий и данных — на финальном кандидате до freeze. Риск шифртекста
+  reset-ссылок в JetStream допускается для синтетического демо; условия — в release notes.
+- Email участников чата скрыт; блокировка входа по email принята для MVP (ADR-056); CSRF привязывается
+  к сессии (2026-11-23).
+- OpenSSL 3.5.9-r1 в Caddy принят досрочно; fence статистики не поддерживает NATS KV (2026-11-24).
 
 ## Следующие шаги
 
-1. Разобрать две serious-находки визуального аудита и итоги последнего Core.
-2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
-3. Проверить учёт skipped и разобраться с нестабильной доставкой Web Push.
-4. Проверить avatar через браузер на выбранном кандидате и подготовить визуальный пакет к утверждению.
-5. Сохранять scoped DAST-доказательства для AUD-381.
+1. Довести [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) до зелёных required checks
+   и обычного merge.
+2. На новом `main` запустить два последовательных полных Core с интервалом не менее двух часов.
+3. Привязка CSRF к сессии (черновик в stash), затем новый визуальный пакет и restore на одном стенде.
+4. Разобраться с Web Push 410 и доставкой R23; проверить учёт skipped.
+5. Приёмка строк этапа 3 на подписанном стенде после закрытия AUD-154.
