@@ -512,11 +512,28 @@ def test_opentelemetry_manifest_and_dependabot_preserve_reviewed_generation() ->
     update = npm_updates[0]
     assert update["cooldown"]["default-days"] == 7
     ignored = {
-        item["dependency-name"]: item["update-types"] for item in update["ignore"]
+        item["dependency-name"]: item["update-types"]
+        for item in update["ignore"]
+        if item["dependency-name"].startswith("@opentelemetry/")
     }
     assert ignored["@opentelemetry/*"] == ["version-update:semver-major"]
     for name in ("api", *OPENTELEMETRY_EXPERIMENTAL_VERSIONS):
         assert ignored[f"@opentelemetry/{name}"] == ["version-update:semver-minor"]
+    assert len(ignored) == len(OPENTELEMETRY_EXPERIMENTAL_VERSIONS) + 2
+
+
+def test_dependabot_holds_lhci_below_the_fsl_licensed_release() -> None:
+    manifest = json.loads(_read_text("frontend/package.json"))
+    assert manifest["devDependencies"]["@lhci/cli"] == "^0.15.1"
+    dependabot = yaml.safe_load(_read_text(".github/dependabot.yml"))
+    (update,) = (
+        update
+        for update in dependabot["updates"]
+        if update["package-ecosystem"] == "npm"
+        and "/frontend" in update.get("directories", [])
+    )
+    lhci = [item for item in update["ignore"] if item["dependency-name"] == "@lhci/cli"]
+    assert lhci == [{"dependency-name": "@lhci/cli", "versions": [">=0.16.0"]}]
 
 
 def test_closed_emergency_constraints_keep_all_security_floors() -> None:

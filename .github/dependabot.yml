@@ -37,6 +37,10 @@ updates:
         update-types: ["version-update:semver-minor"]
       - dependency-name: "@opentelemetry/instrumentation-xml-http-request"
         update-types: ["version-update:semver-minor"]
+      # @lhci/cli 0.16 pulls in `sentry` under FSL-1.1-Apache-2.0, which is not
+      # in the dependency-review allow-licenses list (owner decision 2026-11-24).
+      - dependency-name: "@lhci/cli"
+        versions: [">=0.16.0"]
     groups:
       npm-dependencies:
         patterns:
