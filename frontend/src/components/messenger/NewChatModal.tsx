@@ -268,7 +268,7 @@ export function NewChatModal({
                     onClick={() => setMode("dm")}
                     className={`min-h-[44px] rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       !isGroupMode
-                        ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
+                        ? "bg-(--color-violet-600) text-(--color-white) shadow-sm"
                         : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                     }`}
                   >
@@ -281,7 +281,7 @@ export function NewChatModal({
                     onClick={() => setMode("group")}
                     className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       isGroupMode
-                        ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
+                        ? "bg-(--color-violet-600) text-(--color-white) shadow-sm"
                         : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                     }`}
                   >

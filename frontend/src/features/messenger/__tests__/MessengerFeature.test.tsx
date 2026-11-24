@@ -201,7 +201,9 @@ describe("MessengerFeature", () => {
     mockUseMessenger.mockReturnValue({ isConnected: false })
     render(<MessengerFeature />)
     expect(screen.getByText("messenger:connectionStatus.lost")).toBeTruthy()
-    expect(screen.getByRole("status")).toBeTruthy()
+    const status = screen.getByRole("status")
+    expect(status.getAttribute("aria-live")).toBe("polite")
+    expect(status.classList.contains("pointer-events-none")).toBe(true)
   })
 
   it("hides the WS-disconnect banner when connected", () => {
