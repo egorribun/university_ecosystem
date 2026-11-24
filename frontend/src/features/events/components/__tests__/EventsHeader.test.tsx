@@ -113,11 +113,7 @@ describe("EventsHeader", () => {
     function ControlledHeader() {
       const [searchQuery, setSearchQuery] = useState("orientation")
       return (
-        <EventsHeader
-          {...defaultProps}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
+        <EventsHeader {...defaultProps} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       )
     }
 
