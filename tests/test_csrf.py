@@ -339,6 +339,8 @@ async def test_post_rejects_invalid_hmac_in_signed_mode() -> None:
         client.cookies.set(CSRF_COOKIE_NAME, forged)
         response = await client.post("/mut", headers={CSRF_HEADER_NAME: forged})
     assert response.status_code == 403
+    assert response.headers.get("x-csrf-rejected") == "1"
+    assert response.headers.get_list("cache-control") == ["private, no-store"]
 
 
 @pytest.mark.asyncio
@@ -824,3 +826,104 @@ async def test_first_visit_anonymous_nonce_lives_as_long_as_csrf_cookie() -> Non
         return attributes["max-age"]
 
     assert max_age(_ANON_NONCE_COOKIE_NAME) == max_age(CSRF_COOKIE_NAME)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("locale", ["en", "ru"])
+async def test_missing_csrf_proof_has_pre_handler_marker(locale: str) -> None:
+    from app.core.localization import translate
+
+    app = _wrap(_make_app())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.post("/mut", headers={"Accept-Language": locale})
+
+    assert response.status_code == 403
+    assert response.headers.get("x-csrf-rejected") == "1"
+    assert response.headers.get_list("cache-control") == ["private, no-store"]
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["detail"] == translate("errors.csrf.mismatch", locale=locale)
+
+
+@pytest.mark.asyncio
+async def test_stale_header_has_pre_handler_marker() -> None:
+    app = _make_app()
+    mutations: list[str] = []
+
+    @app.post("/rotate-marker-test")
+    async def rotate(request: Request) -> dict[str, str]:
+        signal_csrf_rotation(request)
+        return {"ok": "yes"}
+
+    @app.post("/tracked-marker-test")
+    async def tracked() -> dict[str, str]:
+        mutations.append("called")
+        return {"ok": "yes"}
+
+    _wrap(app)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        await client.get("/safe")
+        initial_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert initial_token is not None
+        rotated = await client.post(
+            "/rotate-marker-test", headers={CSRF_HEADER_NAME: initial_token}
+        )
+        assert rotated.status_code == 200
+        assert "x-csrf-rejected" not in rotated.headers
+        assert client.cookies.get(CSRF_COOKIE_NAME) != initial_token
+
+        response = await client.post(
+            "/tracked-marker-test", headers={CSRF_HEADER_NAME: initial_token}
+        )
+
+    assert response.status_code == 403
+    assert response.headers.get("x-csrf-rejected") == "1"
+    assert response.headers.get_list("cache-control") == ["private, no-store"]
+    assert mutations == []
+
+
+@pytest.mark.asyncio
+async def test_handler_forbidden_response_has_no_csrf_marker() -> None:
+    from fastapi import HTTPException
+
+    app = _make_app()
+
+    @app.post("/forbidden-marker-test")
+    async def forbidden() -> None:
+        raise HTTPException(status_code=403, detail="operation denied")
+
+    _wrap(app)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        await client.get("/safe")
+        token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert token is not None
+        response = await client.post(
+            "/forbidden-marker-test", headers={CSRF_HEADER_NAME: token}
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "operation denied"
+    assert "x-csrf-rejected" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_csrf_marker_is_private_through_outer_response_hardening() -> None:
+    from app.core.middleware.response_hardening import http_response_hardening
+
+    app = _wrap(_make_app())
+    app.middleware("http")(http_response_hardening)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/static/example")
+
+    assert response.status_code == 403
+    assert response.headers.get("x-csrf-rejected") == "1"
+    assert response.headers.get_list("cache-control") == ["private, no-store"]

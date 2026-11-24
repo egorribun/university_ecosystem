@@ -3,6 +3,8 @@ import { useMockApi } from "./utils/mockApi"
 
 for (const viewport of [
   { width: 360, height: 640 },
+  { width: 390, height: 844 },
+  { width: 768, height: 1024 },
   { width: 1440, height: 900 },
 ]) {
   test(`contextual push offer stays inside ${viewport.width}x${viewport.height}`, async ({
@@ -111,5 +113,13 @@ for (const viewport of [
     expect(box!.y).toBeGreaterThanOrEqual(0)
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
+
+    if (viewport.width < 768) {
+      const bottomNav = page.locator('nav[data-virtual-keyboard="closed"]')
+      await expect(bottomNav).toBeVisible()
+      const bottomNavBox = await bottomNav.boundingBox()
+      expect(bottomNavBox).not.toBeNull()
+      expect(box!.y + box!.height).toBeLessThanOrEqual(bottomNavBox!.y)
+    }
   })
 }

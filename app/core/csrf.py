@@ -205,6 +205,7 @@ async def _reject_csrf(scope: Scope, receive: Receive, send: Send) -> None:
         detail_key="errors.csrf.mismatch",
         locale=locale,
         instance=str(scope.get("path", "")),
+        headers={"X-CSRF-Rejected": "1", "Cache-Control": "private, no-store"},
     )
 
 
