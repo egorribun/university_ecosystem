@@ -3135,8 +3135,8 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     for package in (
         "libapk=3.0.9-r0",
         "apk-tools=3.0.9-r0",
-        "libcrypto3=3.5.9-r0",
-        "libssl3=3.5.9-r0",
+        "libcrypto3=3.5.9-r1",
+        "libssl3=3.5.9-r1",
         "c-ares=1.34.9-r0",
         "brotli-libs=1.2.1-r0",
         "libcurl=8.23.0-r0",

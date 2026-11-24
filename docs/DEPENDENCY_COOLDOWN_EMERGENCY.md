@@ -504,3 +504,26 @@ minimum versions and dependency graphs remain unchanged. The ordinary tests,
 vulnerability checks, immutable image verification and all final-source hosted
 checks remain required. No advisory suppression, scanner bypass, merge or
 deployment is authorized by this exception.
+
+## Exact Alpine OpenSSL security exception, 2026-11-24
+
+For PR [#1578](https://github.com/egorribun/university_ecosystem/pull/1578), owner
+egorribun explicitly approved early adoption of the Alpine 3.23 packages
+`libcrypto3=3.5.9-r1` and `libssl3=3.5.9-r1` in the Caddy runtime stage
+(`services/caddy/Dockerfile`). The release came from aports commit
+[bf5c3035](https://github.com/alpinelinux/aports/commit/bf5c30350a8ee29ad0729a34057f8c8f6e213916),
+committed on 2026-11-23 at 20:51:08 UTC. Its seven-day maturity period ends on
+2026-11-30 at 20:51:08 UTC; the exception then expires.
+
+That commit adds the security patches for CVE-2026-107496, CVE-2026-88822,
+CVE-2026-88823, CVE-2026-95691 and CVE-2026-95692. Alpine also removed
+`3.5.9-r0` from the `v3.23/main` index, so the previous exact pins no longer
+resolve and every Caddy build fails. This does not establish exploitation or
+exposure of a live deployment.
+
+The exception is limited to these two package versions and their exact contract
+expectations. The Caddy base image digest, the other APK pins and the global
+maturity rule remain unchanged. The ordinary tests, vulnerability checks,
+immutable image verification and all final-source hosted checks remain
+required. No advisory suppression, scanner bypass, merge or deployment is
+authorized by this exception.
