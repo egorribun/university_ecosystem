@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { EventsHeader } from "../EventsHeader"
 import i18n from "@/i18n/config"
@@ -105,6 +107,29 @@ describe("EventsHeader", () => {
 
     fireEvent.click(clearBtn)
     expect(defaultProps.onSearchChange).toHaveBeenCalledWith("")
+  })
+
+  it("returns keyboard focus to the search field after clearing the query", async () => {
+    function ControlledHeader() {
+      const [searchQuery, setSearchQuery] = useState("orientation")
+      return (
+        <EventsHeader {...defaultProps} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+      )
+    }
+
+    const user = userEvent.setup()
+    render(<ControlledHeader />)
+    const searchInput = screen.getByRole("textbox", { name: /Search events/i })
+    const clearButton = screen.getByRole("button", { name: /Clear search/i })
+
+    searchInput.focus()
+    await user.tab()
+    expect(clearButton).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(searchInput).toHaveValue("")
+    expect(clearButton).not.toBeInTheDocument()
+    expect(searchInput).toHaveFocus()
   })
 
   it("calls onTabChange when a tab is clicked", () => {
