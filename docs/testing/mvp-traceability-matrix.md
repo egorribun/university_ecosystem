@@ -138,9 +138,9 @@ means the width comes from the live project (1440 desktop, 390 mobile).
 | R38 | §8 «theme and language preferences… persist» | live `frontend/tests/e2e-live/settings-theme-roundtrip.live.spec.ts` :: `theme and language preferences survive reload and are restored` (light/dark, ru/en via `verifyReloadedAppearance`) | live | desktop + mobile; ru and en; light and dark | source-verified, not run | | — | FULL |
 | R39 | §8 «пустые или некорректные ключи локализации… сырых ключей» (live SSR) | live `frontend/tests/e2e-live/ssr-hydration-i18n.live.spec.ts` :: `Russian dashboard SSR hydrates and preserves i18n across News navigation`; `... :: English dashboard SSR hydrates and preserves i18n across News navigation`; `... :: a public route renders one localized page metadata set instead of the root fallback`; live `frontend/tests/e2e-live/schedule-hydration-i18n.live.spec.ts` :: `Russian schedule SSR markup hydrates without raw i18n keys`; `... :: English schedule SSR markup hydrates without raw i18n keys` | live | desktop + mobile; ru and en | source-verified, not run | | Raw keys on settings, messenger and profile pages are not checked live | FULL (dashboard and schedule) |
 | R39b | §8 i18n whole-app parity | unit `frontend/src/tests/pageTranslations.test.tsx` :: `switches activity page translations`; `... :: switches settings translations including notifications`; `frontend/src/tests/translationParity.test.ts` :: `${lng} has matching keys in ${relativePath}`; mocked `frontend/tests/e2e/i18n-switching.spec.ts` :: `switching locale updates visible text`; `... :: settings language switcher changes locale in authenticated view` | unit + mocked | mocked default viewport; locale loop inside the spec | source-verified, not run | | Missing-key audit of every page is static; no rendered check of every page | PARTIAL |
-| R40 | §9 «heatmap, trends, grades, comparison» populated visual state | `frontend/tests/e2e/activity-negative-scope.spec.ts` and `tests/test_stats_api.py` test populated visual values and the persisted summary | mocked browser and local Chromium/ASGI/SQLite | 390/768/1440, RU/EN, light/dark, reduced motion and UTC boundary | 14 mocked Chromium cases passed. In a separate 12-case run Chromium rendered byte-identical responses from the real SQLite-backed summary handler on `a51fdadf`, with synthetic browser auth and no fallback requests. On `40b9505a` PostgreSQL ASGI login returned 200, then cold summary hit the unchanged test-client SQL budget (7 statements against 5). On the patched `5ad9ad01` base, the isolated PostgreSQL cold summary passed at 5 statements and preserved payload and ETag for all eight cache states | | Loopback HTTP login and RS256/JWKS passed on `a6383e594`. The matched PostgreSQL test without a pending email change reduced the warm profile GET from 6 to 5 SQL statements. A deterministic MemoryCache test reproduced stale batch writes after invalidation. The signed browser run remains pending | PARTIAL |
+| R40 | §9 «heatmap, trends, grades, comparison» populated visual state | `frontend/tests/e2e/activity-negative-scope.spec.ts` and `tests/test_stats_api.py` test populated visual values and the persisted summary | mocked browser and local Chromium/ASGI/SQLite | 390/768/1440, RU/EN, light/dark, reduced motion and UTC boundary | 14 mocked Chromium cases passed. In a separate 12-case run Chromium rendered byte-identical responses from the real SQLite-backed summary handler on `a51fdadf`, with synthetic browser auth and no fallback requests. On `40b9505a` PostgreSQL ASGI login returned 200, then cold summary hit the unchanged test-client SQL budget (7 statements against 5). On the patched `5ad9ad01` base, the isolated PostgreSQL cold summary passed at 5 statements and preserved payload and ETag for all eight cache states | | Loopback HTTP login and RS256/JWKS passed on `a6383e594`. Matched PostgreSQL runs reduced the warm profile GET from 6 to 5 SQL statements without a pending email change and from 7 to 6 with one. The active case exceeds the budget of 5. A deterministic MemoryCache test reproduced stale batch writes. An isolated Valkey prototype rejected those stale writes after key deletion or replacement. The signed browser run remains pending | PARTIAL |
 | R40b | §9 empty Activity baseline | live `frontend/tests/e2e-live/activity-dashboard.live.spec.ts` :: `seeded student sees the supported empty Activity baseline` | live | desktop + mobile; ru-RU; reduced motion | source-verified, not run | | Populated state; EN | FULL (empty only) |
-| R41 | §9 «Не добавлять учебные цели, attendance» (negative) | mocked `frontend/tests/e2e/activity-negative-scope.spec.ts` :: `activity page has no learning goal or attendance target UI at 1440px RU`; `... at 390px RU`; `... at 1440px EN`; `... at 390px EN` (text and test-id absence, after a populated registration section and value render with no alert text) | mocked | 1440x900 and 390x844 (spec loops); RU and EN; light | earlier scenario version run locally 2026-11-14 (chromium); current added R40 assertions unrun; not hosted | | Existing negative-scope assertions retained; added populated-value checks are described in R40, not live API evidence | FULL |
+| R41 | §9 «Не добавлять учебные цели, attendance» (negative) | mocked `frontend/tests/e2e/activity-negative-scope.spec.ts` :: `activity page has no learning goal or attendance target UI at 1440px RU`; `... at 390px RU`; `... at 1440px EN`; `... at 390px EN` (text and test-id absence, after a populated registration section and value render with no alert text) | mocked | 1440x900 and 390x844 (spec loops); RU and EN; light | 14 mocked Chromium cases in the shared R40 and R41 spec passed locally; hosted execution pending | | Existing negative-scope assertions retained; added populated-value checks are described in R40, not live API evidence | FULL |
 | R42 | §10 Stories «запуск по клику на аватар/кружок» | live `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts` :: `a seeded story traps focus, closes with Escape, restores focus, and releases scroll lock` (clicks the named story button); unit `frontend/src/components/stories/__tests__/DashboardStories.navigation.test.tsx` :: `navigates the real viewer without an optional story callback or uncaught errors` | live + unit | live desktop + mobile; ru-RU | source-verified, not run | | Avatar tap on a phone-size viewport is covered by the mobile project only | FULL |
 | R43 | §10 Stories «keyboard/swipe» | keyboard: unit `frontend/src/components/stories/__tests__/StoryViewer.keyboard-close.test.tsx` :: `closes on Escape and returns focus to the story trigger`; `frontend/src/components/stories/__tests__/DashboardStories.closure.test.tsx` :: `closes safely when stories disappear before previous navigation`; swipe: unit `frontend/src/hooks/useSwipe.test.ts` :: `triggers onSwipeRight on a long fast horizontal +x swipe`; `... :: triggers onSwipeLeft on a long fast horizontal -x swipe`; `frontend/src/hooks/useSwipeGesture.test.ts` :: `fires onSwipeClose past threshold and resets state` | unit | jsdom | source-verified, not run | | **No live ArrowLeft/ArrowRight or touch swipe test** (no arrow-key or swipe call in any story live spec); `useSwipe` is tested as a generic hook, and its wiring into the viewer is not asserted | PARTIAL |
 | R44 | §10 Stories «пауза в hidden state» | live `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts` :: `a seeded story pauses while hidden and resumes at the preserved progress`; `... :: a seeded story preserves elapsed playback across a clock-controlled hidden tab` | live | desktop + mobile; ru-RU | source-verified, not run | | Background tab on mobile only | FULL |
@@ -225,13 +225,15 @@ it.
   Mocked specs with explicit RU and EN loops: R04c (email MFA) and R39b
   (i18n switching).
 - **EN** (live): R16, R22 (sample loop), R24 (reply loop), R26 (sample loop),
-  R38, R39, R65, R66, R70, R84 (News reflow), and R40b is RU only.
-  **Gap**: EN is not run for activity (R19 and R40), profile (R33), settings
+  R38, R39, R65, R66, R70 and R84 (News reflow). R40b is RU only.
+  **Gap**: EN is pending on the signed stand for activity (R19 and R40),
+  profile (R33), settings
   tabs and password (R37), stories (R42–R46), notifications (R50–R53), admin
   (R75–R76), the messenger list and dialogs outside the sample loops, the
   schedule grid (R78), search (R79), bottom navigation and drawer (R56–R58),
   the push offer (R54), and the 360 registration form (R02).
-- **EN** (mocked): R04c (email MFA), R39b (i18n switching).
+- **EN** (local browser): R04c (mocked email MFA), R39b (mocked i18n switching),
+  R40 (mocked and SQLite-backed activity) and R67 (SSR recovery fixture).
 
 ### Themes
 
@@ -307,7 +309,7 @@ Rows that share a fix are merged in the "Add to" column.
 | R33 | PARTIAL | `frontend/tests/e2e-live/profile-persistence.live.spec.ts` | Count profile re-renders during an update with a React profiler hook in a test build, or assert no full-page refetch | 1440; RU; light |
 | R35 | PARTIAL | `frontend/tests/e2e/profile-settings.spec.ts` | Click an achievement card and assert the detail view opens | 1280x720 (chromium); RU; light |
 | R39b | PARTIAL | `frontend/tests/e2e/i18n-switching.spec.ts` | Visit the messenger, profile and settings pages in EN and assert no text matching a raw key pattern (for example `^[a-z]+\.[a-z.]+$`) | default viewport; RU and EN; light |
-| R40 | PARTIAL | `frontend/tests/e2e/activity-negative-scope.spec.ts` and `tests/test_stats_api.py` | Check the profile query budget with a pending email change and resolve the stale batch cache write. Repeat populated browser acceptance with synthetic records on the signed PostgreSQL/Caddy stand and normal auth. The heatmap is derived from summary recent arrays | 390/768/1440, RU/EN, light/dark |
+| R40 | PARTIAL | `frontend/tests/e2e/activity-negative-scope.spec.ts` and `tests/test_stats_api.py` | Bring the active email-change profile request within the existing five-statement budget and verify the cache-write fix through the stats handler. Repeat populated browser acceptance with synthetic records on the signed PostgreSQL/Caddy stand and normal auth. The heatmap is derived from summary recent arrays | 390/768/1440, RU/EN, light/dark |
 | R43 | PARTIAL | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts` | Press ArrowRight and ArrowLeft and assert the active story index changes; dispatch a horizontal touch swipe and assert the same | 390 (touch) and 1440 (keys); RU; light |
 | R47 | PARTIAL | `frontend/tests/e2e-live/dashboard-hover.live.spec.ts` (new) | Hover a dashboard card and assert computed `transform` has no translation (scale only) | 1440; RU; light |
 | R48 | PARTIAL | `frontend/tests/e2e/dashboard-hover.spec.ts` (new) | Hover a date bullet and an event card; assert the expected scale or outline computed style | 1280x720 (chromium); RU; light |
@@ -341,7 +343,7 @@ Rows that share a fix are merged in the "Add to" column.
   relations. Exact-schema, current-source PostgreSQL/RLS and deployed-reader
   evidence remain separate acceptance requirements; source presence is not proof.
 
-- **HTTP 500 recovery has bounded implementation, not browser acceptance (R67).**
+- **HTTP 500 recovery has local Chromium evidence (R67).**
   `frontend/src/pages/NewsDetail.tsx` now offers localized retry for terminal
   HTTP >=500 errors, retaining Back and the existing query retry policy.
   Authenticated Axios and anonymous status-bearing errors are covered by real
@@ -350,23 +352,22 @@ Rows that share a fix are merged in the "Add to" column.
   `frontend/scripts/server-prod.mjs` emits standalone localized HTML with a
   same-location retry when a renderer throws before headers on GET; HEAD has
   an empty body and non-GET/HEAD failures remain plain text. The Node subprocess
-  test exercises the actual wrapper and its retry script through JSDOM/vm,
-  not a real browser. Normally returned `Response(500)` bodies and stream
-  failures after headers retain their prior behavior. Other API error surfaces
-  are not covered by this NewsDetail fix. Genuine browser/mobile/accessibility
-  and current-source hosted evidence remain open; no universal 500 handling
-  or deployed acceptance is inferred.
+  test exercises the actual wrapper and its retry script through JSDOM/vm.
+  Five local Chromium cases cover API retry and the production wrapper with a
+  throwing renderer fixture. Hosted preflight on the final source and
+  production-stack acceptance remain open. Normally returned `Response(500)`
+  bodies, stream failures after headers and other API error surfaces are
+  outside this scope.
 
 ### Ordering
 
-Next acceptance work: execute the implemented R59 rapid-navigation and R23
-group-reconnect scenarios on the final live source, and the R40 populated-value
-assertions in the mocked browser lane. Unit/contract passes and collection do
-not execute these browser assertions or prove the unchanged live time budgets.
-R40 still lacks 768/dark coverage and populated backend evidence. R67 needs
-browser proof of API retry recovery and an actual server-generated document
-failure, not a mock-supplied error page. Then address remaining geometry and
-interaction gaps; no FULL upgrade follows from source presence alone.
+Execute the R59 rapid-navigation and R23 group-reconnect scenarios on the
+final live source within their existing time budgets. Resolve the R40 stale
+cache write and repeat the populated browser matrix on the signed
+PostgreSQL/Caddy stand with normal authentication. The isolated browser run
+already covers 768px and dark mode with SQLite-backed responses.
+Run the R67 production-wrapper preflight on the final hosted source.
+Remaining geometry and interaction gaps are listed in the matrix.
 
 R21 remains an unmeasured first-load scenario, but the
 [master plan, §6.3](../superpowers/plans/MVP_MASTER_PLAN.md) defers the full
