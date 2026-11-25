@@ -72,6 +72,8 @@ CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
 # Nonce bytes: 256-bit → 43 URL-safe base64 chars
 _TOKEN_NONCE_BYTES = 32
+# Verification accepts only this length, so nonce + session_id is unambiguous.
+_TOKEN_NONCE_LEN = 43
 # Separator between nonce and HMAC in the cookie value.
 # Period is safe in cookie values (RFC 6265) and is not produced by base64url.
 _TOKEN_SEPARATOR = "."  # nosec B105  # noqa: S105
@@ -159,7 +161,7 @@ def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
     if len(parts) != 2:
         return False
     nonce, received_mac = parts
-    if not nonce or not received_mac:
+    if len(nonce) != _TOKEN_NONCE_LEN or not received_mac:
         return False
     expected_mac = _compute_csrf_hmac(nonce, session_id, secret)
     # secrets.compare_digest is constant-time on equal-length strings.

@@ -135,6 +135,14 @@ class TestVerifySignedToken:
         """Malformed shapes never produce a true verification."""
         assert _verify_signed_token(malformed, "any-session", _TEST_SECRET) is False
 
+    def test_rejects_a_nonce_that_borrows_the_session_prefix(self) -> None:
+        """A fixed nonce length keeps ``nonce + session_id`` unambiguous."""
+        token = _build_signed_token("abc", _TEST_SECRET)
+        nonce, mac = token.split(".", 1)
+        assert len(nonce) == 43
+        assert _verify_signed_token(f"{nonce}a.{mac}", "bc", _TEST_SECRET) is False
+        assert _verify_signed_token(f"{nonce[:-1]}.{mac}", "abc", _TEST_SECRET) is False
+
     def test_rejects_token_with_extra_separators(self) -> None:
         """``maxsplit=1`` keeps the second segment intact, so MAC won't match."""
         # Build a real token then graft junk after a second '.' — verifies that
