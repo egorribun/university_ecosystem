@@ -75,10 +75,12 @@ pause all application writes to PostgreSQL and the configured application S3
 bucket, and keep them paused until the command reports success.
 
 For an owned Core live stand, use its existing private state directory and the
-clean checkout at the stand's source SHA:
+clean checkout at the stand's source SHA. Replace the run directory name below
+with the one already assigned to that stand; do not create a new directory:
 
 ```powershell
-$stateDirectory = 'C:\Temp\ue-live-acceptance\run-<id>'
+$stateRoot = Join-Path (python -c "import tempfile; print(tempfile.gettempdir())") 'ue-live-acceptance'
+$stateDirectory = Join-Path $stateRoot 'run-<replace-with-existing-id>'
 uv run python -m scripts.live_stand quiesce --in-place --state-dir $stateDirectory
 ```
 
@@ -177,10 +179,11 @@ the prefix may be empty when restoring keys at the bucket root. The selected
 prefix must have no current objects, versions, delete markers, or incomplete
 multipart uploads. Configure
 `BACKUP_RESTORE_ADMIN_DATABASE_URL` to a PostgreSQL administrative database,
-choose a nonexistent database named `restore_<name>`, and run:
+choose a nonexistent database named `restore_<name>`, and replace the example
+manifest key with the exact key printed by `snapshot`:
 
 ```powershell
-uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001 --objects-target-public-base-url https://cdn.restore.example.edu/uploads
+uv run python scripts/backup_db.py restore-snapshot --manifest-key 'database/snapshots/<snapshot-id>/database.manifest.json' --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001 --objects-target-public-base-url https://cdn.restore.example.edu/uploads
 ```
 
 Keep `BACKUP_RESTORE_ADMIN_DATABASE_URL` and storage credentials in the process
@@ -217,7 +220,8 @@ Before writes, restore validates the v3 manifest, downloads and verifies the
 database dump and every unique object copy, checks that the database target
 does not exist, and checks that the selected target prefix has no current
 objects, versions, delete markers, or incomplete multipart uploads. To restore
-at the bucket root, pass `--objects-target-prefix ""` explicitly. The target
+at the bucket root, pass `--objects-target-prefix=` as one argument so shells
+that drop standalone empty native arguments still pass the empty prefix. The target
 S3 endpoint must support `ListObjectVersions`, `ListMultipartUploads`, pinned
 `GetObject` reads, and `If-None-Match: *` for `PutObject` and
 `CompleteMultipartUpload`. Unsupported or incomplete preflight/conditional
