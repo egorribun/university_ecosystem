@@ -458,10 +458,7 @@ async def _collect_notifications(
         except SQLAlchemyError as exc:
             if not _is_missing_column_error(exc):
                 raise
-            logger.warning(
-                "Falling back to row-based unread count due to schema mismatch",
-                extra={"error": str(exc), "user_id": str(user.id)},
-            )
+            logger.warning("Falling back to row-based unread count due to schema mismatch")
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
     else:
         count_stmt = select(func.count(Notification.id)).where(
@@ -469,11 +466,8 @@ async def _collect_notifications(
         )
         try:
             unread = (await db.execute(count_stmt)).scalar_one() or 0
-        except SQLAlchemyError as exc:
-            logger.warning(
-                "Falling back to row-based total count due to SQLAlchemy error",
-                extra={"error": str(exc), "user_id": str(user.id)},
-            )
+        except SQLAlchemyError:
+            logger.warning("Falling back to row-based total count due to SQLAlchemy error")
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
 
     next_cursor = None
