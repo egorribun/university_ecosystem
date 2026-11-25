@@ -183,7 +183,10 @@ python -m scripts.live_stand stop --in-place --state-dir $liveStateDir
 ```
 
 Run the example in one clean checkout. With `--in-place`, `--ref` must match
-that checkout's `HEAD`. For the shared Stage 4 and 5 stand, check out the exact
+that checkout's `HEAD`. The live Playwright setup verifies the endpoints with
+`uv run --frozen --no-sync` in that checkout. In a fresh worktree, run
+`uv sync --frozen` before `e2e`; otherwise setup fails before any test runs.
+For the shared Stage 4 and 5 stand, check out the exact
 `main` commit selected in the [MVP release plan](docs/superpowers/plans/MVP_MASTER_PLAN.md#4-критический-путь)
 before starting Core. A developer run on `egorribun` does not replace acceptance
 and restore evidence collected on that `main` commit.
