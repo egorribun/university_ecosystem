@@ -2665,8 +2665,7 @@ func (h *Hub) handleControlMessageCallback(appCtx context.Context, msg *nats.Msg
 	}
 
 	if h.internalSecret == "" {
-		h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
-			"user_id", payload.Data.UserID)
+		h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event")
 		return
 	}
 
@@ -2685,13 +2684,12 @@ func (h *Hub) handleControlMessageCallback(appCtx context.Context, msg *nats.Msg
 
 	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
 	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-		h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
-			"action", payload.Data.Action, "user_id", payload.Data.UserID)
+		h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event")
 		return
 	}
 
 	h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
-		"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
+		"action", payload.Data.Action, "reason", payload.Data.Reason)
 
 	if h.authClient != nil {
 		h.authClient.Invalidate(payload.Data.UserID, "")
@@ -2728,12 +2726,12 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	h.mu.RUnlock()
 
 	if len(targets) == 0 {
-		h.Logger.DebugContext(context.Background(), "DisconnectUser: no active connections found", "user_id", userID)
+		h.Logger.DebugContext(context.Background(), "DisconnectUser: no active connections found")
 		return
 	}
 
 	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
-		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
+		"count", len(targets), "code", closeCode, "reason", reason)
 
 	closeClientTransportsInParallelWithAfterDispatch(targets, closeCode, reason, func(client *Client) {
 		client.closeTransportWithControlFrame(closeCode, reason)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,27 @@ func signedControlPayload(t *testing.T, secret string, data testControlData) []b
 	})
 	require.NoError(t, err)
 	return full
+}
+
+func TestControlDisconnectLogsOmitAccountID(t *testing.T) {
+	var logs strings.Builder
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h := &Hub{Logger: logger, internalSecret: strings.Repeat("a", 32)}
+	accountID := "user-with-no-open-sessions"
+	data := signedControlPayload(t, h.internalSecret, testControlData{
+		Action: "disconnect",
+		Reason: "access_revoked",
+		UserID: accountID,
+	})
+
+	h.handleControlMessageCallback(t.Context(), &nats.Msg{Data: data})
+
+	logged := logs.String()
+	assert.Contains(t, logged, "Received valid NATS control event")
+	assert.Contains(t, logged, `"action":"disconnect"`)
+	assert.Contains(t, logged, "DisconnectUser: no active connections found")
+	assert.NotContains(t, logged, accountID)
+	assert.NotContains(t, logged, `"user_id"`)
 }
 
 func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
