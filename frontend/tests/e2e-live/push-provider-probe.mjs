@@ -3,9 +3,10 @@ import process from "node:process"
 import { expect } from "@playwright/test"
 
 // A push provider can report a just-created endpoint as gone (HTTP 410)
-// within seconds, while the browser still holds it. Probe each new test-owned
-// subscription before a scenario depends on it, and resubscribe on a provider
-// rejection, at most twice (owner decision, 2026-11-25). Scenario assertions stay strict: they never absorb a 410.
+// within seconds, while the browser still holds it, and a gone answer deletes
+// the server binding. Each new test-owned subscription therefore first ages for
+// a fixed settle window, then is probed before a scenario depends on it, with a
+// resubscribe on a provider rejection at most twice (owner decisions, 2026-11-25). Scenario assertions stay strict: they never absorb a 410.
 // Each rejection is reported through the existing recipient observation
 // protocol. Never return an endpoint, key, request or error text to the runner.
 const PROJECTS = new Set(["desktop", "mobile"])
@@ -15,6 +16,7 @@ const NOTIFICATION_WAIT_MS = 30_000
 const MAX_RATE_LIMIT_WAIT_MS = 65_000
 // One probe plus up to two resubscribes, each followed by a fresh probe.
 const MAX_ATTEMPTS = 3
+const PROVIDER_SETTLE_MS = 15_000
 
 /** Map a `/api/v1/push/test` response for one subscription to a closed class. */
 export function classifyProbeResponse(status, body) {
@@ -119,6 +121,8 @@ export async function requireProviderAcceptedSubscription({
   }
   let currentEndpoint = endpoint
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    // The subscription (or its replacement) was created just before this point.
+    await adminPage.waitForTimeout(PROVIDER_SETTLE_MS)
     const tag = `${PROBE_TAG_PREFIX}${randomUUID()}`
     let response = await sendProbe(adminPage, recipientId, tag)
     let result = classifyProbeResponse(response.status, response.body)
