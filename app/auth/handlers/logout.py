@@ -88,6 +88,9 @@ async def logout(
             )
 
     LoginService.clear_access_token_cookie(response)
+    from app.core.csrf import signal_csrf_rotation
+
+    signal_csrf_rotation(request, session_id="")
     response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
     return {"message": "Logged out successfully"}
 

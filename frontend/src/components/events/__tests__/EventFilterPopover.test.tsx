@@ -26,6 +26,7 @@ import {
   useEventFilterPopover,
 } from "@/components/events/EventFilterPopover"
 import type { EventDateRange } from "@/features/events/types"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 /**
  * `useEventFilterPopover` is a HEADLESS hook (not a component). Mount it inside
@@ -97,7 +98,9 @@ describe("useEventFilterPopover", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     expect(screen.getByText("events:filters.dateRange")).toBeInTheDocument()
     expect(screen.getByText("events:filters.allDates")).toBeInTheDocument()
-    expect(screen.getByText("events:filters.today")).toBeInTheDocument()
+    const today = screen.getByRole("button", { name: "events:filters.today" })
+    expectBaseUtility(today, "min-height", "44px")
+    expectBaseUtility(today, "min-width", "44px")
     expect(screen.getByText("events:filters.thisWeek")).toBeInTheDocument()
     expect(screen.getByText("events:filters.thisMonth")).toBeInTheDocument()
     expect(screen.getByText("events:filters.allDates")).toHaveClass("bg-brand")

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import { ConfirmDialog } from "./ConfirmDialog"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 // Keep the real focus-trap lifecycle and keyboard handling; jsdom has no layout.
 vi.mock("focus-trap", async (importOriginal) => {
@@ -68,6 +69,7 @@ describe("ConfirmDialog focus lifecycle", () => {
     const cancel = screen.getByRole("button", { name: "Cancel" })
     const confirm = screen.getByRole("button", { name: "Delete" })
     await waitFor(() => expect(cancel).toHaveFocus())
+    expectBaseUtility(confirm, "color", "var(--color-inverse-text)")
 
     await user.tab({ shift: true })
     expect(confirm).toHaveFocus()

@@ -1,6 +1,11 @@
 import { ensureCsrfCookie } from "@/api/client"
+import { forceRefreshCsrfCookie } from "@/api/csrfRecovery"
 import { getBrowserSessionGeneration, isCurrentBrowserSession } from "@/stores/sessionEpoch"
-import { REQUEST_OFFLINE_REPLAY_CREDENTIALS } from "./replayCredentials"
+import {
+  REPLAY_REFRESH_RESPONSE_TIMEOUT_MS,
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS,
+  REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2,
+} from "./replayCredentials"
 
 const CSRF_COOKIE_PATTERN = /(?:^|;\s*)csrf_token=([^;]*)/
 
@@ -32,6 +37,60 @@ async function answerReplayCredentials(port: MessagePort): Promise<void> {
   port.postMessage(sessionNonce && csrfToken ? { csrfToken, sessionNonce } : null)
 }
 
+async function answerRefreshedReplayCredentials(
+  port: MessagePort,
+  expectedSession: unknown,
+  expiresAt: unknown,
+  stillControlled: () => boolean
+): Promise<void> {
+  const originalSession = currentReplaySessionNonce()
+  const remaining = typeof expiresAt === "number" ? expiresAt - Date.now() : NaN
+  if (
+    !originalSession ||
+    expectedSession !== originalSession ||
+    !stillControlled() ||
+    !Number.isFinite(remaining) ||
+    remaining <= 0
+  ) {
+    port.postMessage(null)
+    return
+  }
+
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const refreshed = await Promise.race([
+      forceRefreshCsrfCookie(controller.signal),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(
+          () => {
+            controller.abort()
+            resolve(false)
+          },
+          Math.min(remaining, REPLAY_REFRESH_RESPONSE_TIMEOUT_MS)
+        )
+      }),
+    ])
+    const sessionNonce = currentReplaySessionNonce()
+    const csrfToken =
+      sessionNonce === originalSession && stillControlled() ? readCsrfCookie() : null
+    port.postMessage(
+      refreshed &&
+        !controller.signal.aborted &&
+        typeof expiresAt === "number" &&
+        Date.now() < expiresAt &&
+        sessionNonce &&
+        csrfToken
+        ? { version: 2, csrfToken, sessionNonce }
+        : null
+    )
+  } catch {
+    port.postMessage(null)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 const installedContainers = new WeakSet<ServiceWorkerContainer>()
 
 /**
@@ -42,9 +101,24 @@ export function installReplayCredentialResponder(container: ServiceWorkerContain
   if (installedContainers.has(container)) return
   installedContainers.add(container)
   container.addEventListener("message", (event: MessageEvent) => {
-    if (event.data?.type !== REQUEST_OFFLINE_REPLAY_CREDENTIALS) return
+    const type = event.data?.type
+    if (
+      type !== REQUEST_OFFLINE_REPLAY_CREDENTIALS &&
+      type !== REQUEST_OFFLINE_REPLAY_CREDENTIALS_V2
+    )
+      return
     const port = event.ports[0]
     if (!port || !container.controller || event.source !== container.controller) return
-    void answerReplayCredentials(port)
+    if (type === REQUEST_OFFLINE_REPLAY_CREDENTIALS) {
+      void answerReplayCredentials(port)
+    } else if (event.data?.version === 2) {
+      const requestingWorker = container.controller
+      void answerRefreshedReplayCredentials(
+        port,
+        event.data.sessionNonce,
+        event.data.expiresAt,
+        () => container.controller === requestingWorker
+      )
+    }
   })
 }

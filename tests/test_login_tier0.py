@@ -158,9 +158,13 @@ async def test_verify_mfa_challenge_genericizes_binding_mismatch() -> None:
 
 @pytest.mark.asyncio
 async def test_csrf_cookie_endpoint_returns_initialization_response() -> None:
+    from fastapi import Response
+
     from app.api.auth.login import get_csrf_cookie
 
-    assert await get_csrf_cookie() == {"detail": "CSRF cookie set"}
+    response = Response()
+    assert await get_csrf_cookie(response) == {"detail": "CSRF cookie set"}
+    assert response.headers["cache-control"] == "private, no-store"
 
 
 @pytest.mark.asyncio

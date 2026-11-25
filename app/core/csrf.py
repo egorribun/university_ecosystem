@@ -72,6 +72,8 @@ CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
 # Nonce bytes: 256-bit → 43 URL-safe base64 chars
 _TOKEN_NONCE_BYTES = 32
+# Verification accepts only this length, so nonce + session_id is unambiguous.
+_TOKEN_NONCE_LEN = 43
 # Separator between nonce and HMAC in the cookie value.
 # Period is safe in cookie values (RFC 6265) and is not produced by base64url.
 _TOKEN_SEPARATOR = "."  # nosec B105  # noqa: S105
@@ -94,9 +96,10 @@ _NEW_ANON_NONCE_STATE_KEY = "_csrf_new_anon_nonce"
 # password change).  Call signal_csrf_rotation(request) in those handlers.
 # (RZ-5: audit 2026-02-24)
 _ROTATE_CSRF_KEY = "rotate_csrf"
+_NEXT_CSRF_SESSION_KEY = "_csrf_next_session_id"
 
 
-def signal_csrf_rotation(request: Request) -> None:
+def signal_csrf_rotation(request: Request, *, session_id: str | None = None) -> None:
     """Mark the current request as requiring a fresh CSRF token in the response.
 
     Call this in every endpoint that completes a privilege escalation:
@@ -104,9 +107,13 @@ def signal_csrf_rotation(request: Request) -> None:
     - MFA step-up completion
     - password change
 
-    CSRFMiddleware reads this flag and rotates the cookie unconditionally.
+    Pass the newly issued JWT's session ID when a login changes the access
+    cookie. Pass an empty session ID when logout returns to an anonymous
+    binding. Otherwise rotation retains the current request's binding.
     """
     setattr(request.state, _ROTATE_CSRF_KEY, True)
+    if session_id is not None:
+        setattr(request.state, _NEXT_CSRF_SESSION_KEY, session_id)
 
 
 # ── HMAC helpers ─────────────────────────────────────────────────────────────
@@ -154,7 +161,7 @@ def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
     if len(parts) != 2:
         return False
     nonce, received_mac = parts
-    if not nonce or not received_mac:
+    if len(nonce) != _TOKEN_NONCE_LEN or not received_mac:
         return False
     expected_mac = _compute_csrf_hmac(nonce, session_id, secret)
     # secrets.compare_digest is constant-time on equal-length strings.
@@ -164,31 +171,37 @@ def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
 # ── Session ID extraction ─────────────────────────────────────────────────────
 
 
-def _extract_session_id(request: Request, cookie_token: str) -> str:
+def _extract_session_id(
+    request: Request,
+    *,
+    for_response: bool = False,
+    current_session_id: str | None = None,
+) -> str:
     """Return the session identifier to bind into the CSRF HMAC.
 
-    Priority (most specific → least specific):
-    1. ``request.state.session_id`` — set by the auth middleware after the
-       JWT is validated.  This is the tightest binding.
-    2. ``_csrf_anon_nonce`` cookie — a random per-client nonce for anonymous
-       users that survives across requests within the same browser session.
-       RZ-W9-04: Replaces the previous IP+UA fingerprint.  IP+UA caused CSRF
-       token collisions for users sharing a corporate NAT/CDN with identical
-       User-Agents; a random nonce is unique per browser instance.
+    A new login or logout may specify the response binding after the request
+    has already passed validation. Otherwise use only the JTI from the same
+    verified access JWT used by authentication, falling back to the anonymous
+    nonce when the cookie is absent or invalid.
     """
-    session_id: str = getattr(request.state, "session_id", None) or ""
-    if not session_id:
-        # Read the persisted per-client nonce from the dedicated cookie.
+    session_id = (
+        getattr(request.state, _NEXT_CSRF_SESSION_KEY, None) if for_response else None
+    )
+    if session_id is None:
+        session_id = current_session_id
+    if session_id is None:
+        access_token = request.cookies.get("access_token_v2")
+        if access_token:
+            from app.auth.security import decode_token
+
+            payload = decode_token(access_token)
+            session_id = payload.get("jti") if payload else None
+    if not (isinstance(session_id, str) and session_id):
+        # Keep anonymous clients independent even when sharing an IP address.
         anon_nonce = request.cookies.get(_ANON_NONCE_COOKIE_NAME, "")
-        # Validate: must be exactly _ANON_NONCE_HEX_LEN lowercase hex chars.
-        # RZ-27-06: Always call token_hex to normalize timing regardless of
-        # cookie validity. Discarded when the cookie is valid.
-        # RZ-28-02: Replaced short-circuit boolean chain with compiled regex
-        # fullmatch for more uniform validation timing.
+        # Always call token_hex regardless of whether the existing cookie is valid.
         fresh_nonce = secrets.token_hex(16)
         if not (anon_nonce and _ANON_NONCE_RE.fullmatch(anon_nonce)):
-            # Generate a fresh nonce and store it in request.state so that
-            # send_with_csrf_cookie can include the Set-Cookie in the response.
             anon_nonce = fresh_nonce
             setattr(request.state, _NEW_ANON_NONCE_STATE_KEY, anon_nonce)
         session_id = f"anon:{anon_nonce}"
@@ -357,6 +370,7 @@ class CSRFMiddleware:
         # ── Core CSRF validation ──────────────────────────────────────────────
         cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
         header_token = request.headers.get(CSRF_HEADER_NAME, "")
+        session_id: str | None = None
 
         if method in _MUTATION_METHODS:
             if not cookie_token or not header_token:
@@ -385,7 +399,7 @@ class CSRFMiddleware:
             # Step 2: HMAC signature check (RZ-003 — Signed Double-Submit).
             # Only performed when the secret is configured (signed mode).
             if self._signed:
-                session_id = _extract_session_id(request, cookie_token)
+                session_id = _extract_session_id(request)
                 if not _verify_signed_token(cookie_token, session_id, self._hmac_key):
                     _logger.warning(
                         "CSRF rejected (invalid HMAC signature)",
@@ -401,17 +415,44 @@ class CSRFMiddleware:
             """Inject Set-Cookie into http.response.start without buffering body."""
             if message["type"] == "http.response.start":
                 should_rotate: bool = getattr(request.state, _ROTATE_CSRF_KEY, False)
+                response_session_id = session_id
+                stale_cookie = False
+                if (
+                    self._signed
+                    and cookie_token
+                    and method not in _MUTATION_METHODS
+                    and not should_rotate
+                ):
+                    response_session_id = _extract_session_id(request)
+                    stale_cookie = not _verify_signed_token(
+                        cookie_token, response_session_id, self._hmac_key
+                    )
                 # If no existing cookie is present, or the endpoint signaled rotation, inject a new token
-                if not cookie_token or should_rotate:
+                if not cookie_token or should_rotate or stale_cookie:
                     if self._signed:
-                        session_id = _extract_session_id(request, "")
-                        new_token = _build_signed_token(session_id, self._hmac_key)
+                        response_session_id = _extract_session_id(
+                            request,
+                            for_response=True,
+                            current_session_id=response_session_id,
+                        )
+                        new_token = _build_signed_token(
+                            response_session_id, self._hmac_key
+                        )
                     else:
                         new_token = secrets.token_urlsafe(_TOKEN_NONCE_BYTES)
                     set_cookie_header = self._build_set_cookie_header(new_token)
                     headers: list[tuple[bytes, bytes]] = list(
                         message.get("headers", [])
                     )
+                    # A shared cache must never replay a client-specific token.
+                    # Replace any upstream public policy before outer middleware
+                    # has a chance to assign a default static-file cache policy.
+                    headers = [
+                        (name, value)
+                        for name, value in headers
+                        if name.lower() != b"cache-control"
+                    ]
+                    headers.append((b"cache-control", b"private, no-store"))
                     headers.append((b"set-cookie", set_cookie_header))
                     # RZ-W9-04: If a new anonymous nonce was generated in
                     # _extract_session_id (i.e. the client had no existing

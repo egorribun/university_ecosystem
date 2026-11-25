@@ -179,7 +179,7 @@ export function NewsComments({
                             setEditingCommentId(comment.id)
                             setEditingCommentText(comment.content)
                           }}
-                          className="p-1.5 rounded-lg hover:bg-(--bg-surface)/[calc(var(--opacity-strong)*100%)] text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
+                          className="inline-flex size-11 items-center justify-center rounded-lg hover:bg-(--bg-surface)/[calc(var(--opacity-strong)*100%)] text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
                           title={t("news:actions.editComment")}
                           aria-label={t("news:actions.editComment")}
                         >
@@ -191,7 +191,7 @@ export function NewsComments({
                             editPending || comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)
                           }
                           onClick={() => setDeleteConfirmationId(comment.id)}
-                          className="p-1.5 rounded-lg hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/[calc(var(--opacity-medium)*100%)]"
+                          className="inline-flex size-11 items-center justify-center rounded-lg hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/[calc(var(--opacity-medium)*100%)]"
                           title={t("news:actions.deleteComment")}
                           aria-label={t("news:actions.deleteComment")}
                         >

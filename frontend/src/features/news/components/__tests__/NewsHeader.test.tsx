@@ -12,6 +12,7 @@ import { useState } from "react"
 import { NewsHeader } from "@/features/news/components/NewsHeader"
 import type { NewsCategory } from "@/features/news/categories"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 type Props = Parameters<typeof NewsHeader>[0]
 
@@ -61,6 +62,51 @@ describe("NewsHeader", () => {
     expect(clearButton).toHaveClass("size-11")
     await userEvent.click(clearButton)
     expect(props.onSearchChange).toHaveBeenCalledWith("")
+  })
+
+  it("returns keyboard focus to the search field after clearing the query", async () => {
+    const ControlledHeader = () => {
+      const [searchQuery, setSearchQuery] = useState("rust")
+      return (
+        <NewsHeader
+          onAddClick={vi.fn()}
+          isAdmin={false}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeCategory="all"
+          onCategoryChange={vi.fn()}
+          sortMode="newest"
+          onSortChange={vi.fn()}
+        />
+      )
+    }
+    await renderWithRouter({ ui: () => <ControlledHeader />, authProvider: false })
+    const user = userEvent.setup()
+    const searchInput = screen.getByRole("textbox")
+    const clearButton = screen.getByRole("button", { name: /clear/i })
+
+    searchInput.focus()
+    await user.tab()
+    expect(clearButton).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(searchInput).toHaveValue("")
+    expect(clearButton).not.toBeInTheDocument()
+    expect(searchInput).toHaveFocus()
+  })
+
+  it("keeps the search field and short category labels at the 44px target size", async () => {
+    await renderHeader({ bookmarkCount: 1 })
+    expectBaseUtility(screen.getByRole("textbox"), "min-height", "calc(var(--spacing) * 11)")
+    const toolbar = screen.getByRole("toolbar", { name: /filter news by category/i })
+    const categoryButtons = Array.from(toolbar.querySelectorAll("button")).filter(
+      (button) => !button.getAttribute("aria-label")?.startsWith("Sort")
+    )
+    expect(categoryButtons.map((button) => button.textContent)).toContain("All")
+    for (const button of categoryButtons) {
+      expectBaseUtility(button, "min-width", "44px")
+      expectBaseUtility(button, "min-height", "44px")
+    }
   })
 
   it("changes category via the All pill and category pills", async () => {
@@ -224,6 +270,14 @@ describe("NewsHeader", () => {
     expect(savedPill).not.toBeNull()
     await userEvent.click(savedPill!)
     expect(props.onCategoryChange).toHaveBeenCalledWith("saved")
+  })
+
+  it("pairs the active saved filter with the theme inverse text on the brand surface", async () => {
+    await renderHeader({ activeCategory: "saved", bookmarkCount: 2 })
+    const savedPill = screen.getByRole("button", { name: /saved/i })
+    expect(savedPill).toHaveAttribute("aria-current", "page")
+    expect(savedPill).toHaveClass("bg-brand")
+    expectBaseUtility(savedPill, "color", "var(--color-inverse-text)")
   })
 
   it("hides the saved filter when there are no bookmarks", async () => {

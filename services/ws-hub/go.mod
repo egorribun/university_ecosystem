@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/lestrrat-go/jwx/v3 v3.4.0
-	github.com/nats-io/nats.go v1.55.0
+	github.com/nats-io/nats.go v1.56.0
 	// MOD-07 (audit 2026-03-16 Wave 10): Pact V4 provider verification for the
 	// university-backend → ws-hub NATS message contract.  pact-go/v2 wraps the
 	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.

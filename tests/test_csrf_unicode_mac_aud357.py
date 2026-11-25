@@ -7,12 +7,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
-from starlette.types import Message, Receive, Scope, Send
+from starlette.types import Receive, Scope, Send
 
 import app.core.csrf as csrf_module
 from app.core.csrf import (
     _ANON_NONCE_COOKIE_NAME,
-    _ROTATE_CSRF_KEY,
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
     CSRFMiddleware,
@@ -204,55 +203,27 @@ async def test_valid_ascii_double_submit_uses_ascii_constant_time_comparisons(
 
 @pytest.mark.asyncio
 async def test_rotation_does_not_refresh_malformed_anonymous_nonce_cookie() -> None:
-    async def inner_app(scope: Scope, receive: Receive, send: Send) -> None:
-        await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"ok"})
+    from app.auth.security import _mint_pure_jwt
 
-    middleware = CSRFMiddleware(
-        inner_app, csrf_hmac_secret=_TEST_SECRET.decode("ascii")
-    )
-    scope: Scope = {
-        "type": "http",
-        "asgi": {"version": "3.0", "spec_version": "2.3"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": "/mut",
-        "raw_path": b"/mut",
-        "query_string": b"",
-        "root_path": "",
-        "headers": [
-            (
-                b"cookie",
-                b"csrf_token=existing-token; _csrf_anon_nonce=invalid",
-            )
-        ],
-        "client": ("127.0.0.1", 12345),
-        "server": ("testserver", 80),
-        "state": {"session_id": "session-A", _ROTATE_CSRF_KEY: True},
-    }
-    sent: list[Message] = []
+    app = _make_app()
 
-    async def receive() -> Message:
-        return {"type": "http.request", "body": b"", "more_body": False}
+    @app.get("/rotate")
+    async def rotate(request: Request) -> dict[str, str]:
+        csrf_module.signal_csrf_rotation(request)
+        return {"ok": "yes"}
 
-    async def send(message: Message) -> None:
-        sent.append(message)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        client.cookies.set("access_token_v2", _mint_pure_jwt("test-user"))
+        client.cookies.set(_ANON_NONCE_COOKIE_NAME, "invalid")
+        response = await client.get("/rotate")
 
-    await middleware(scope, receive, send)
-
-    response_start = next(
-        message for message in sent if message["type"] == "http.response.start"
-    )
-    assert response_start["status"] == 200
-    set_cookies = [
-        value
-        for name, value in response_start["headers"]
-        if name.lower() == b"set-cookie"
-    ]
+    assert response.status_code == 200
+    set_cookies = response.headers.get_list("set-cookie")
     assert len(set_cookies) == 1
-    assert b"csrf_token=" in set_cookies[0]
-    assert b"_csrf_anon_nonce=" not in set_cookies[0]
+    assert set_cookies[0].startswith("csrf_token=")
 
 
 @pytest.mark.asyncio

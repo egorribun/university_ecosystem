@@ -301,7 +301,7 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     assert checkout["with"]["persist-credentials"] is False
     go_setup = _step(jobs["actionlint"], "Set up Go for source-pinned actionlint")
     assert go_setup["uses"] == (
-        "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+        "actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5"
     )
     assert go_setup["with"]["go-version"] == "1.26.11"
     assert go_setup["with"]["cache"] is False

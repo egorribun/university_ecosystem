@@ -268,7 +268,7 @@ export function EventFileManager({
                       type="button"
                       aria-label={t("events:detail.sections.files.deleteAria")}
                       disabled={isPendingFile}
-                      className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/[calc(var(--opacity-subtle)*100%)] disabled:opacity-medium"
+                      className="inline-flex size-11 items-center justify-center rounded-full text-error-text transition-colors hover:bg-error-bg/[calc(var(--opacity-subtle)*100%)] disabled:opacity-medium"
                       onClick={() => void handleDeleteFile(f.id)}
                     >
                       <DeleteIcon size={16} />

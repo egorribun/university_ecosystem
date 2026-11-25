@@ -70,7 +70,7 @@ async def test_finalize_login_updates_plain_user_after_mfa_completion() -> None:
     metadata = session_service.create_access_token.await_args.kwargs["metadata"]
     assert metadata["mfa_method"] == "totp"
     assert metadata["mfa_completed_at"] == user.mfa_last_verified_at
-    csrf_rotation.assert_called_once_with(request)
+    csrf_rotation.assert_called_once_with(request, session_id=str(session.jti))
     redis_session.create_session.assert_awaited_once()
     record_login_success.assert_called_once_with(method="totp")
 

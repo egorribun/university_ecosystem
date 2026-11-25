@@ -92,7 +92,7 @@ export function ConfirmDialog({
                   disabled={isLoading}
                   aria-busy={isLoading}
                   className={cn(
-                    "rounded-sm px-6 py-3 text-sm font-bold text-white shadow-surface transition-all focus-ring-premium disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2",
+                    "rounded-sm px-6 py-3 text-sm font-bold text-inverse-text shadow-surface transition-all focus-ring-premium disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2",
                     variant === "danger"
                       ? "bg-error-text shadow-glow-error"
                       : variant === "warning"

@@ -13,14 +13,18 @@ vi.mock("react-i18next", () => ({
 }))
 
 import { EventDetailHero } from "@/components/events/EventDetailHero"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 const baseProps = { imageUrl: "https://picsum.photos/seed/event-detail/1200/675" }
 
 describe("EventDetailHero", () => {
   it("renders the hero image and a zoom button", () => {
     render(<EventDetailHero {...baseProps} />)
-    expect(screen.getByRole("button", { name: "events:detail.actions.zoom" })).toBeInTheDocument()
+    const zoom = screen.getByRole("button", { name: "events:detail.actions.zoom" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    // The scrim is black in both themes, so the icon stays white.
+    expectBaseUtility(zoom, "width", "calc(var(--spacing) * 11)")
+    expectBaseUtility(zoom, "color", "var(--color-white)")
   })
 
   it("opens and closes the lightbox", async () => {

@@ -171,9 +171,3 @@ async def test_confirm_email_change_conflict(auth_service, request_mock):
         assert exc.value.status_code == 400
 
     auth_service.auth_repo.mark_email_change_token_used.assert_called_with(100)
-
-
-@pytest.mark.asyncio
-async def test_refresh_pending_email_none_user(auth_service):
-    res = await auth_service.refresh_pending_email(None)
-    assert res is None

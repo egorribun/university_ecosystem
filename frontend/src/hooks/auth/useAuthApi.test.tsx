@@ -44,6 +44,13 @@ const mocks = vi.hoisted(() => ({
   prefetchEventsListQuery: vi.fn(),
   logWarning: vi.fn(),
   logError: vi.fn(),
+  captureOfflineSession: vi.fn((): string | null => null),
+  discardOfflineSession: vi.fn(async (_session: string) => false),
+}))
+
+vi.mock("@/api/offlineMutationQueue", () => ({
+  captureOfflineSession: mocks.captureOfflineSession,
+  discardOfflineSession: mocks.discardOfflineSession,
 }))
 
 vi.mock("@/api/client", () => ({
@@ -200,7 +207,9 @@ beforeEach(() => {
   mocks.hasPushConsent.mockReturnValue(false)
   mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
   mocks.releasePushServerBinding.mockResolvedValue(undefined)
-  useLogoutNoticeStore.setState({ notice: null })
+  mocks.captureOfflineSession.mockReturnValue(null)
+  mocks.discardOfflineSession.mockResolvedValue(false)
+  useLogoutNoticeStore.setState({ notice: null, offlineChangesDiscarded: false })
 })
 
 afterEach(() => {
@@ -764,6 +773,61 @@ describe("logout", () => {
     expect(mocks.setPushConsent).toHaveBeenCalledWith(false)
     expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
     expect(w.handleUnauthorized).toHaveBeenCalled()
+  })
+
+  it("discards the ending session's offline changes before signing out and says so", async () => {
+    const w = makeWires({ user: fullUser() })
+    const order: string[] = []
+    mocks.captureOfflineSession.mockReturnValue("session-A")
+    mocks.discardOfflineSession.mockImplementation(async (session: string) => {
+      order.push(`discard:${session}`)
+      return true
+    })
+    mocks.apiPost.mockImplementation(async (url: unknown) => {
+      order.push(String(url))
+      return { status: 200, data: {} }
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    // A confirmed logout's Clear-Site-Data would otherwise wipe the queue silently.
+    expect(order).toEqual(["discard:session-A", "/auth/logout"])
+    expect(useLogoutNoticeStore.getState().offlineChangesDiscarded).toBe(true)
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("stays quiet when the ending session queued nothing or was never verified", async () => {
+    const w = makeWires({ user: fullUser() })
+    mocks.captureOfflineSession.mockReturnValue("session-A")
+    const { result } = renderApi(w)
+    await act(async () => {
+      await result.current.logout()
+    })
+    expect(mocks.discardOfflineSession).toHaveBeenCalledWith("session-A")
+
+    mocks.captureOfflineSession.mockReturnValue(null)
+    await act(async () => {
+      await result.current.logout()
+    })
+    expect(mocks.discardOfflineSession).toHaveBeenCalledOnce()
+    expect(useLogoutNoticeStore.getState().offlineChangesDiscarded).toBe(false)
+  })
+
+  it("does not attribute a discard to a session that a successor replaced", async () => {
+    const w = makeWires({ user: fullUser() })
+    mocks.captureOfflineSession.mockReturnValue("session-A")
+    mocks.discardOfflineSession.mockImplementation(async () => {
+      rotateBrowserSession()
+      return true
+    })
+    const { result } = renderApi(w)
+    await act(async () => {
+      await result.current.logout()
+    })
+    expect(useLogoutNoticeStore.getState().offlineChangesDiscarded).toBe(false)
   })
 
   it("unbinds this browser endpoint on the server before ending the session", async () => {

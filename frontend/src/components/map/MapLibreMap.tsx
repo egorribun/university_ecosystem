@@ -352,6 +352,8 @@ export function MapLibreMapComponent({
       if (hasAnimatedIntro.current) return
       hasAnimatedIntro.current = true
       if (urlInitialViewport) return
+      // Never take the camera back from a gesture that started before loading.
+      if (enableUrlSyncRef.current) return
 
       const prefersReduced =
         lowPowerDevice || window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -365,7 +367,7 @@ export function MapLibreMapComponent({
         })
       } else {
         introTimeoutRef.current = setTimeout(() => {
-          if (cancelled) return
+          if (cancelled || enableUrlSyncRef.current) return
           map.flyTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
             zoom: CAMPUS_DETAIL_ZOOM,
@@ -394,6 +396,14 @@ export function MapLibreMapComponent({
     const map = mapRef?.current?.getMap()
     if (map?.loaded()) updateCollisionProjection(map)
   }, [mapRef, updateCollisionProjection])
+
+  /* ── URL-sync latch ──
+     A user gesture carries its DOM event from movestart on, while the intro
+     and sky moves never do. The first gesture's last moveend can belong to
+     the interrupted intro and arrive without originalEvent, so latch here. */
+  const handleMoveStart = useCallback((evt: { originalEvent?: unknown }) => {
+    if (evt.originalEvent) enableUrlSyncRef.current = true
+  }, [])
 
   /* ── URL-sync onMoveEnd handler (Wave 120 SW5) ── */
   const handleMoveEnd = useCallback(
@@ -479,6 +489,7 @@ export function MapLibreMapComponent({
           onDeselectBuilding()
           setActivePopupId(null)
         }}
+        onMoveStart={handleMoveStart}
         onMoveEnd={handleMoveEnd}
         maxPitch={70}
       >

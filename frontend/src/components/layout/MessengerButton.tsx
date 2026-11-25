@@ -31,7 +31,7 @@ export default function MessengerButton() {
           animate={{ scale: 1 }}
           className="absolute -top-0.5 -right-0.5 flex items-center justify-center"
         >
-          <span className="relative inline-flex rounded-full h-4 min-w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-label-xs font-bold text-white items-center justify-center px-0.5">
+          <span className="relative inline-flex rounded-full h-4 min-w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-label-xs font-bold text-inverse-text items-center justify-center px-0.5">
             {unreadCount}
           </span>
         </m.span>

@@ -36,18 +36,23 @@ const Login = () => {
   const user = useAuthStore((s) => s.user)
   const logoutNotice = useLogoutNoticeStore((s) => s.notice)
   const clearLogoutNotice = useLogoutNoticeStore((s) => s.clear)
+  const offlineChangesDiscarded = useLogoutNoticeStore((s) => s.offlineChangesDiscarded)
+  const clearOfflineChangesDiscarded = useLogoutNoticeStore((s) => s.clearOfflineChangesDiscarded)
   const { t } = useTranslation("auth")
   const navigate = useNavigate()
   const search = useRouterState({ select: (s) => s.location.search })
   const redirectedRef = useRef(false)
   useEffect(() => {
-    if (user) clearLogoutNotice()
+    if (user) {
+      clearLogoutNotice()
+      clearOfflineChangesDiscarded()
+    }
     if (user && !redirectedRef.current) {
       redirectedRef.current = true
       const target = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
       navigate({ to: target, replace: true })
     }
-  }, [clearLogoutNotice, user, navigate, search])
+  }, [clearLogoutNotice, clearOfflineChangesDiscarded, user, navigate, search])
 
   // MFA challenge screen — shown when backend requires second factor
   if (mfa.loginChallenge) {
@@ -63,6 +68,14 @@ const Login = () => {
             role="alert"
           >
             {t("login.logoutUnconfirmed")}
+          </p>
+        ) : null}
+        {offlineChangesDiscarded && !user ? (
+          <p
+            className="mb-4 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+            role="status"
+          >
+            {t("login.logoutOfflineDiscarded")}
           </p>
         ) : null}
         <LoginCredentialForm form={form} />

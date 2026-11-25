@@ -40,6 +40,7 @@ export const NewsHeader = ({
   bookmarkCount = 0,
 }: NewsHeaderProps) => {
   const { t } = useTranslation(["news", "common"])
+  const searchInputRef = useRef<HTMLInputElement>(null)
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
   const stickyRef = useRef<HTMLDivElement>(null)
@@ -111,17 +112,21 @@ export const NewsHeader = ({
               className="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none"
             />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("news:search.placeholder")}
-              className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none transition-shadow"
+              className="min-h-11 w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none transition-shadow"
               aria-label={t("news:search.placeholder")}
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => onSearchChange("")}
+                onClick={() => {
+                  onSearchChange("")
+                  searchInputRef.current?.focus()
+                }}
                 className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
                 aria-label={t("common:buttons.clear")}
               >
@@ -179,7 +184,7 @@ export const NewsHeader = ({
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
-              "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
+              "rounded-full px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
               activeCategory === "all"
                 ? "bg-brand text-[var(--text-inverse)] shadow-sm"
                 : "matte-chip text-(--text-secondary)"
@@ -197,7 +202,7 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
+                "rounded-full px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
                 activeCategory === cat.id ? "shadow-sm" : "matte-chip text-(--text-secondary)"
               )}
               style={
@@ -221,9 +226,9 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange("saved")}
               aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast flex items-center gap-1.5 whitespace-nowrap",
+                "rounded-full px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-semibold tracking-wide transition-all duration-fast flex items-center gap-1.5 whitespace-nowrap",
                 activeCategory === "saved"
-                  ? "bg-brand text-white shadow-sm"
+                  ? "bg-brand text-inverse-text shadow-sm"
                   : "matte-chip text-(--text-secondary)"
               )}
             >

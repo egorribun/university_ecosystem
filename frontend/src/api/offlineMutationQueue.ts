@@ -1,4 +1,8 @@
-import { storePendingMutation, type PendingMutationRecord } from "@/sw/offline"
+import {
+  discardSessionRecords,
+  storePendingMutation,
+  type PendingMutationRecord,
+} from "@/sw/offline"
 import { currentReplaySessionNonce } from "@/sw/replayCredentialResponder"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
@@ -46,5 +50,32 @@ export async function enqueueOfflineMutation(mutation: {
     controller.postMessage({
       type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
     })
+  }
+}
+
+/** The verified session that queued records are bound to, or null when unverified. */
+export const captureOfflineSession = currentReplaySessionNonce
+
+/** Bounded so an unavailable or busy queue never delays sign-out. */
+const DISCARD_TIMEOUT_MS = 3_000
+
+/**
+ * Removes the offline changes queued by an ending session so they are never sent later.
+ * Resolves true only when at least one queued change was removed in time.
+ */
+export async function discardOfflineSession(sessionNonce: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const discarded = await Promise.race([
+      discardSessionRecords(sessionNonce),
+      new Promise<number>((resolve) => {
+        timer = setTimeout(() => resolve(0), DISCARD_TIMEOUT_MS)
+      }),
+    ])
+    return discarded > 0
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
   }
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const offline = vi.hoisted(() => ({
   storePendingMutation: vi.fn(),
+  discardSessionRecords: vi.fn(),
 }))
 
 vi.mock("@/sw/offline", () => offline)
@@ -12,7 +13,11 @@ import {
   getBrowserSessionGeneration,
   rotateBrowserSession,
 } from "@/stores/sessionEpoch"
-import { enqueueOfflineMutation } from "../offlineMutationQueue"
+import {
+  captureOfflineSession,
+  discardOfflineSession,
+  enqueueOfflineMutation,
+} from "../offlineMutationQueue"
 
 const mutation = {
   url: "/api/v1/events/1",
@@ -154,5 +159,34 @@ describe("enqueueOfflineMutation", () => {
     expect(controller.postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
     })
+  })
+})
+
+describe("discardOfflineSession", () => {
+  it("captures the verified session that queued records are bound to", () => {
+    expect(captureOfflineSession()).toBe(getBrowserSessionGeneration())
+  })
+
+  it("reports whether the ending session had queued changes", async () => {
+    offline.discardSessionRecords.mockResolvedValueOnce(2).mockResolvedValueOnce(0)
+
+    await expect(discardOfflineSession("session-A")).resolves.toBe(true)
+    await expect(discardOfflineSession("session-A")).resolves.toBe(false)
+    expect(offline.discardSessionRecords).toHaveBeenCalledWith("session-A")
+  })
+
+  it("never blocks sign-out on an unavailable or busy queue", async () => {
+    offline.discardSessionRecords.mockRejectedValueOnce(new Error("IndexedDB unavailable"))
+    await expect(discardOfflineSession("session-A")).resolves.toBe(false)
+
+    vi.useFakeTimers()
+    try {
+      offline.discardSessionRecords.mockReturnValueOnce(new Promise<number>(() => undefined))
+      const pending = discardOfflineSession("session-A")
+      await vi.advanceTimersByTimeAsync(3_000)
+      await expect(pending).resolves.toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
