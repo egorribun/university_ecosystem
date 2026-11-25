@@ -323,7 +323,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "messenger-keyboard-focus.live.spec.ts": [58, 140],
   "messenger-membership-revocation.live.spec.ts": [317],
   "messenger-realtime.live.spec.ts": [260, 417, 864, 1105, 1342, 1669, 2033],
-  "messenger-reconnect-ordering.live.spec.ts": [332],
+  "messenger-reconnect-ordering.live.spec.ts": [352],
   "messenger-reconnect.live.spec.ts": [261],
   "messenger-unread-read.live.spec.ts": [322],
   "navbar-layout-stability.live.spec.ts": [267, 375, 438, 476],

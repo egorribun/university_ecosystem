@@ -27,14 +27,14 @@ async function makeFixture() {
   const packageDir = path.join(root, "node_modules", "maplibre-gl")
   await mkdir(path.join(outputDir, "assets"), { recursive: true })
   await mkdir(packageDir, { recursive: true })
-  const packageJson = JSON.stringify({ dependencies: { "maplibre-gl": "^6.18.0" } })
+  const packageJson = JSON.stringify({ dependencies: { "maplibre-gl": "^6.19.0" } })
   const lockJson = JSON.stringify({
     lockfileVersion: 3,
     packages: {
-      "node_modules/maplibre-gl": { version: "6.18.0", integrity: "sha512-ZXhhbXBsZQ==" },
+      "node_modules/maplibre-gl": { version: "6.19.0", integrity: "sha512-ZXhhbXBsZQ==" },
     },
   })
-  const installedJson = JSON.stringify({ name: "maplibre-gl", version: "6.18.0" })
+  const installedJson = JSON.stringify({ name: "maplibre-gl", version: "6.19.0" })
   await writeFile(path.join(root, "package.json"), packageJson)
   await writeFile(path.join(root, "package-lock.json"), lockJson)
   await writeFile(path.join(packageDir, "package.json"), installedJson)
@@ -132,9 +132,9 @@ test("metadata records real emitted bytes, module identities and entry reachabil
       target: ["chrome107"],
       format: "es",
     })
-    assert.equal(report.package.declared, "^6.18.0")
-    assert.equal(report.package.installedVersion, "6.18.0")
-    assert.equal(report.package.lockVersion, "6.18.0")
+    assert.equal(report.package.declared, "^6.19.0")
+    assert.equal(report.package.installedVersion, "6.19.0")
+    assert.equal(report.package.lockVersion, "6.19.0")
     assert.equal(report.package.lockIntegrity, "sha512-ZXhhbXBsZQ==")
     assert.equal(report.package.packageJsonSha256, sha256(fixture.packageJson))
     assert.equal(report.package.lockSha256, sha256(fixture.lockJson))
@@ -432,7 +432,7 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
       assert.equal(receipt.checkoutSha, fixture.checkoutSha)
       assert.equal(receipt.runId, "1234")
       assert.equal(receipt.runAttempt, "1")
-      assert.equal(receipt.package.installedVersion, "6.18.0")
+      assert.equal(receipt.package.installedVersion, "6.19.0")
       assert.equal(receipt.mapLibreChunks.length, 1)
       assert.equal(receipt.mapLibreChunks[0].fileName, "assets/vendor-map-A.js")
       assert.equal(
@@ -1363,12 +1363,12 @@ async function refreshPolicyHtml(fixture) {
   fixture.evidence.htmlReportSha256 = sha256(bytes)
 }
 
-test("admits only a proven MapLibre 6.18 chunk within the separate lazy ceiling", async () => {
+test("admits only a proven MapLibre 6.19 chunk within the separate lazy ceiling", async () => {
   const fixture = await makePolicyFixture()
   try {
     const bytes = Buffer.from(fixture.bundle["assets/vendor-map-A.js"].code)
     const compressed = gzipSync(bytes, { level: 9 }).byteLength
-    assert.ok(compressed > 280 * 1024 && compressed <= 290 * 1024)
+    assert.ok(compressed > 280 * 1024 && compressed <= 292 * 1024)
     const metadata = JSON.parse(await readFile(fixture.evidence.metadataPath, "utf8"))
     const worker = metadata.mapLibreChunks[0].modules.find(
       (module) => module.path === "dist/maplibre-gl-worker.mjs"
@@ -1385,7 +1385,7 @@ test("admits only a proven MapLibre 6.18 chunk within the separate lazy ceiling"
     const report = await policyReport(fixture)
     assert.doesNotThrow(
       () => assertBundleBudgets(report),
-      "valid build-bound MapLibre evidence must admit only the separate 290 KiB ceiling"
+      "valid build-bound MapLibre evidence must admit only the separate 292 KiB ceiling"
     )
     assert.equal(report.budgets.generalLazyJsGzipKb, 280)
     const candidate = report.assets.find((asset) => asset.path === "client/assets/vendor-map-A.js")
@@ -1756,7 +1756,7 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
   }
 })
 
-test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 290", async (t) => {
+test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 292", async (t) => {
   const cases = [
     [
       "other-lazy-over-280",
@@ -1766,11 +1766,11 @@ test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 290", 
       /Detached-A\.js.*280 KiB/u,
     ],
     [
-      "MapLibre-over-290",
+      "MapLibre-over-292",
       (fixture) => {
-        fixture.bundle["assets/vendor-map-A.js"].code = policyPayload(9300)
+        fixture.bundle["assets/vendor-map-A.js"].code = policyPayload(9350)
       },
-      /vendor-map-A\.js.*290 KiB/u,
+      /vendor-map-A\.js.*292 KiB/u,
     ],
   ]
   for (const [name, change, expected] of cases) {
@@ -1791,10 +1791,10 @@ test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 290", 
           level: 9,
         }).byteLength
         assert.ok(otherSize > 280 * 1024 && otherSize < mapSize)
-        assert.ok(mapSize <= 290 * 1024)
+        assert.ok(mapSize <= 292 * 1024)
         t.diagnostic(`MapLibre gzip bytes=${mapSize}; other lazy gzip bytes=${otherSize}`)
       } else {
-        assert.ok(mapSize > 290 * 1024)
+        assert.ok(mapSize > 292 * 1024)
         t.diagnostic(`Oversized MapLibre gzip bytes=${mapSize}`)
       }
       const report = await policyReport(fixture)

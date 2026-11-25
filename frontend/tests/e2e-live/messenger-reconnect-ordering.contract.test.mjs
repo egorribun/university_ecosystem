@@ -38,6 +38,18 @@ test("live direct-message reconnect proves ordered, exactly-once replay for uniq
   requireMatch(/page\.on\(["']websocket["']/u, "the scenario observes the real WebSocket")
   requireMatch(/socket\.on\(["']framesent["']/u, "room joins are observed on the socket")
   requireMatch(/socket\.on\(["']framereceived["']/u, "message frames are observed on the socket")
+  requireMatch(
+    /admission: createRoomAdmissionObserver\(\)/u,
+    "each observed socket tracks the hub's room admission ACK"
+  )
+  requireMatch(
+    /admittedToRoom\(receiverSocket, activeChatId\)\)\.toBe\(true\)\s+const baseline = await sendLiveMessage\(/u,
+    "the baseline is sent only after the hub admits the receiver to the room"
+  )
+  requireMatch(
+    /admittedToRoom\(receiverSocket, activeChatId\)\)\.toBe\(true\)\s+const afterReconnect = await sendLiveMessage\(/u,
+    "the post-reconnect message waits for the reconnected socket's admission"
+  )
   requireMatch(/setOffline\(true\)/u, "the real receiver transport is disconnected")
   requireMatch(/setOffline\(false\)/u, "the receiver transport is reconnected")
   requireMatch(/navigator\.onLine/u, "the browser confirms its offline state")
