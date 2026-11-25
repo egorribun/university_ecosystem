@@ -11,7 +11,6 @@ style) targeting the previously-uncovered branches:
   missing user after update (L346-347), full success path (L354-374)
 - change_password: wrong current password (L387), same password (L389),
   HIBP ValueError wrap (L396-397), no-active-session revoke-all branch (L411)
-- refresh_pending_email with a user (L441-443)
 - _hash_token production guard (L457)
 - attach_pending_email: None user (L478), DetachedInstanceError fallback +
   DB-query path (L485-488, L501-505), unexpected inspect error re-raise
@@ -879,27 +878,6 @@ async def test_change_password_without_active_session_revokes_all(
     auth_service.session_repo.revoke_all_for_user.assert_awaited_once_with(
         user_id=user.id
     )
-
-
-# ---------------------------------------------------------------------------
-# refresh_pending_email with a user (L440-443)
-# ---------------------------------------------------------------------------
-
-
-async def test_refresh_pending_email_with_pending_request(auth_service):
-    """Pending change request is attached via model_copy (L440-443)."""
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    auth_service.auth_repo.get_active_email_change_request = AsyncMock(
-        return_value=SimpleNamespace(new_email="pending@example.com")
-    )
-
-    result = await auth_service.refresh_pending_email(user)
-
-    user.model_copy.assert_called_once_with(
-        update={"pending_email": "pending@example.com"}
-    )
-    assert result is user.model_copy.return_value
 
 
 # ---------------------------------------------------------------------------

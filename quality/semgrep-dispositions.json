@@ -398,7 +398,7 @@
         },
         {
           "path": "app/services/auth_service.py",
-          "sha256": "bc76907865fe01f395be096709d2396937c9497a1ecc592c1d8afa8a4e4feeb9"
+          "sha256": "acc255dfbd2705242131eb88cc0b358d84d6912cb47c9f51ff7263980cb513c5"
         },
         {
           "path": "app/core/config/mixins/mfa_settings.py",

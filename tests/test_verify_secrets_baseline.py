@@ -38766,7 +38766,205 @@ _LIFECYCLE_REVERSALS = (
 )
 
 
+# Removing the dead AuthService.refresh_pending_email rebinds one existing
+# Semgrep companion and its public-integrity identity. Restore the exact
+# predecessor before the lifecycle layer; inventory and approvals are unchanged.
+_AUTH_DEAD_CODE_SOURCE = "app/services/auth_service.py"
+_AUTH_DEAD_CODE_LEDGER = _LIFECYCLE_LEDGER
+_AUTH_DEAD_CODE_ROW = 432
+_AUTH_DEAD_CODE_PINS = {
+    _AUTH_DEAD_CODE_SOURCE: (
+        bytes.fromhex(
+            "bc 76 90 78 65 fe 01 f3 95 be 09 67 09 d2 39 69"
+            " 37 c9 49 7a 1e cc 59 2c 1d 8a fa 8a 4e 4f ee b9"
+        ),
+        bytes.fromhex(
+            "ac c2 55 df bd 27 05 24 21 31 eb 88 cc 0b 35 8d"
+            " 84 d6 91 2c b4 7c 9f 51 ff 72 63 98 0c b5 13 c5"
+        ),
+    ),
+    _AUTH_DEAD_CODE_LEDGER: (
+        _LIFECYCLE_PINS[_LIFECYCLE_LEDGER][1],
+        bytes.fromhex(
+            "97 e6 a1 bc 22 53 ea 29 a1 6a 7c e8 93 59 f8 df"
+            " 70 10 d2 3b c7 86 98 b7 39 00 a9 6a 9b d4 4d 36"
+        ),
+    ),
+}
+_AUTH_DEAD_CODE_ROW_BEFORE = bytes.fromhex(
+    "b5 12 ed 35 2e 71 48 e0 94 ba 65 bb fd d8 71 70"
+    " d5 89 4b 25 26 4e 34 5a f1 92 95 69 3f 3c 2a df"
+)
+_AUTH_DEAD_CODE_ROW_AFTER = bytes.fromhex(
+    "8e a9 5d 2f 52 17 22 d0 ae 2c 98 aa 8a bd 4e ff"
+    " 0d f6 5d 9c 3b 9d db ff e7 d7 c6 f3 cb 6f 9d 27"
+)
+_AUTH_DEAD_CODE_REVERSALS = (
+    (
+        b"        return True, revoked\n\n\ndef _hash_token(",
+        b"        return True, revoked\n"
+        b"\n"
+        b"    async def refresh_pending_email(\n"
+        b"        self, user: models.User | UserAuthDTO | UserDTO | None\n"
+        b"    ) -> models.User | UserAuthDTO | UserDTO | None:\n"
+        b"        if user is None:\n"
+        b"            return None\n"
+        b"\n"
+        b"        pending = await self.auth_repo.get_active_email_change_request(user.id)\n"
+        b"        email = pending.new_email if pending else None\n"
+        b"\n"
+        b'        return cast("_AnyUser | None", attach_pending_email_sync(user, email))\n'
+        b"\n"
+        b"\n"
+        b"def _hash_token(",
+    ),
+)
+
+
+def _auth_dead_code_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _AUTH_DEAD_CODE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    if path == _AUTH_DEAD_CODE_LEDGER:
+        old_source, new_source = _AUTH_DEAD_CODE_PINS[_AUTH_DEAD_CODE_SOURCE]
+        reversals = (
+            (new_source.hex().encode("ascii"), old_source.hex().encode("ascii")),
+        )
+    else:
+        reversals = _AUTH_DEAD_CODE_REVERSALS
+    restored = actual
+    for current_fragment, predecessor_fragment in reversals:
+        assert restored.count(current_fragment) == 1, message
+        restored = restored.replace(current_fragment, predecessor_fragment, 1)
+    assert hashlib.sha256(restored).digest() == previous, message
+    return restored
+
+
+def _auth_dead_code_source_if_current(path: str, actual: bytes) -> bytes:
+    pins = _AUTH_DEAD_CODE_PINS.get(path)
+    if pins is not None and hashlib.sha256(actual).digest() == pins[1]:
+        return _auth_dead_code_source_predecessor(path, actual)
+    return actual
+
+
+def _auth_dead_code_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _AUTH_DEAD_CODE_ROW:
+        return restored
+    row = records[_AUTH_DEAD_CODE_ROW]
+    identity = row["identity"]
+    previous, current = _AUTH_DEAD_CODE_PINS[_AUTH_DEAD_CODE_SOURCE]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Historical layers validate any earlier or unrecognized identity.
+        return restored
+    assert len(records) == 524, "auth dead-code disposition count changed"
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _AUTH_DEAD_CODE_ROW_AFTER, (
+        "auth dead-code disposition approval metadata changed"
+    )
+    assert identity["path"] == _AUTH_DEAD_CODE_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _AUTH_DEAD_CODE_ROW_BEFORE, (
+        "auth dead-code predecessor approval metadata changed"
+    )
+    return restored
+
+
+def test_auth_dead_code_rebind_restores_exact_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for path, (previous, current) in _AUTH_DEAD_CODE_PINS.items():
+        actual = (root / path).read_bytes()
+        assert hashlib.sha256(actual).digest() == current
+        restored = _auth_dead_code_source_predecessor(path, actual)
+        assert hashlib.sha256(restored).digest() == previous
+        assert _auth_dead_code_source_predecessor(path, restored) == restored
+    assert _auth_dead_code_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+    ledger = json.loads((root / _AUTH_DEAD_CODE_LEDGER).read_bytes())
+    current_hex = _AUTH_DEAD_CODE_PINS[_AUTH_DEAD_CODE_SOURCE][1].hex()
+    assert [
+        item["sha256"]
+        for disposition in ledger["dispositions"]
+        for item in disposition.get("companions", [])
+        if item["path"] == _AUTH_DEAD_CODE_SOURCE
+    ] == [current_hex]
+
+
+def test_auth_dead_code_policy_rebind_changes_only_one_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    assert len(policy["records"]) == 524
+    restored = _auth_dead_code_policy_predecessor(policy)
+    assert [
+        index
+        for index, (current, previous) in enumerate(
+            zip(policy["records"], restored["records"], strict=True)
+        )
+        if current != previous
+    ] == [_AUTH_DEAD_CODE_ROW]
+    previous_hex, current_hex = (
+        digest.hex() for digest in _AUTH_DEAD_CODE_PINS[_AUTH_DEAD_CODE_SOURCE]
+    )
+    identity = restored["records"][_AUTH_DEAD_CODE_ROW]["identity"]
+    assert identity["hashed_secret_bytes"] == _nov15_identity(previous_hex)
+    live_identity = policy["records"][_AUTH_DEAD_CODE_ROW]["identity"]
+    assert live_identity["hashed_secret_bytes"] == _nov15_identity(current_hex)
+    assert _auth_dead_code_policy_predecessor(restored) == restored
+
+
+@pytest.mark.parametrize("path", sorted(_AUTH_DEAD_CODE_PINS))
+@pytest.mark.parametrize("mutation", ["append", "duplicate"])
+def test_auth_dead_code_projection_rejects_spoofed_source(
+    path: str, mutation: str
+) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    if mutation == "append":
+        changed = actual + b"\n"
+    elif path == _AUTH_DEAD_CODE_LEDGER:
+        token = _AUTH_DEAD_CODE_PINS[_AUTH_DEAD_CODE_SOURCE][1].hex().encode("ascii")
+        changed = actual.replace(token, token + b" " + token, 1)
+    else:
+        changed = actual + _AUTH_DEAD_CODE_REVERSALS[0][0]
+    with pytest.raises(AssertionError, match="SHA-256 changed"):
+        _auth_dead_code_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize("field", ["category", "identity"])
+def test_auth_dead_code_policy_rejects_approval_drift(field: str) -> None:
+    policy = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "quality/security-false-positive-dispositions.json"
+        ).read_bytes()
+    )
+    row = policy["records"][_AUTH_DEAD_CODE_ROW]
+    if field == "identity":
+        row["identity"]["type"] = "Secret Keyword"
+        message = "approval metadata changed"
+    else:
+        row["category"] = "test_fixture"
+        message = "approval metadata changed"
+    with pytest.raises(AssertionError, match=message):
+        _auth_dead_code_policy_predecessor(policy)
+
+
 def _lifecycle_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _auth_dead_code_source_if_current(path, actual)
     pins = _LIFECYCLE_PINS.get(path)
     if pins is None:
         return actual
@@ -38790,6 +38988,7 @@ def _lifecycle_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _lifecycle_source_if_current(path: str, actual: bytes) -> bytes:
+    actual = _auth_dead_code_source_if_current(path, actual)
     pins = _LIFECYCLE_PINS.get(path)
     if pins is not None and hashlib.sha256(actual).digest() == pins[1]:
         return _lifecycle_source_predecessor(path, actual)
@@ -38797,7 +38996,7 @@ def _lifecycle_source_if_current(path: str, actual: bytes) -> bytes:
 
 
 def _lifecycle_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _auth_dead_code_policy_predecessor(policy)
     records = restored["records"]
     if len(records) <= _LIFECYCLE_ROW:
         return restored
@@ -39533,8 +39732,10 @@ def test_nats_inventory_full_source_chain_rejects_drift(path: str) -> None:
 
 def test_nats_inventory_policy_projection_changes_only_existing_identity() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _auth_dead_code_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     policy = _npm_projection_policy_predecessor(policy)
     previous = _nats_inventory_policy_predecessor(policy)
@@ -39689,8 +39890,10 @@ def test_aud154_rotation_projection_restores_exact_nats_successor(path: str) -> 
 def test_aud154_rotation_rebind_preserves_inventory_and_approval() -> None:
     root = Path(__file__).resolve().parents[1]
     ledger = json.loads((root / _NATS_INVENTORY_LEDGER).read_bytes())
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _auth_dead_code_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     baseline = json.loads((root / ".secrets.baseline").read_bytes())
     assert len(ledger["dispositions"]) == 15
@@ -40812,12 +41015,14 @@ def test_rustsec_2026_ledger_rejects_spoofed_digest(
 def test_lifecycle_rebind_restores_exact_source_and_ledger_predecessors() -> None:
     root = Path(__file__).resolve().parents[1]
     for path, (previous, current) in _LIFECYCLE_PINS.items():
-        actual = (root / path).read_bytes()
+        actual = _auth_dead_code_source_if_current(path, (root / path).read_bytes())
         assert hashlib.sha256(actual).digest() == current
         restored = _lifecycle_source_predecessor(path, actual)
         assert hashlib.sha256(restored).digest() == previous
         assert _lifecycle_source_predecessor(path, restored) == restored
-    ledger_bytes = (root / _LIFECYCLE_LEDGER).read_bytes()
+    ledger_bytes = _auth_dead_code_source_if_current(
+        _LIFECYCLE_LEDGER, (root / _LIFECYCLE_LEDGER).read_bytes()
+    )
     ledger = json.loads(ledger_bytes)
     previous_ledger = json.loads(
         _lifecycle_source_predecessor(_LIFECYCLE_LEDGER, ledger_bytes)
@@ -40836,8 +41041,10 @@ def test_lifecycle_rebind_restores_exact_source_and_ledger_predecessors() -> Non
 
 def test_lifecycle_policy_rebind_changes_only_one_existing_identity() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    policy = _auth_dead_code_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     restored = _lifecycle_policy_predecessor(policy)
     assert len(policy["records"]) == 524

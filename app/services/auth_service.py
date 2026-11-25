@@ -657,17 +657,6 @@ class AuthService:
         )
         return True, revoked
 
-    async def refresh_pending_email(
-        self, user: models.User | UserAuthDTO | UserDTO | None
-    ) -> models.User | UserAuthDTO | UserDTO | None:
-        if user is None:
-            return None
-
-        pending = await self.auth_repo.get_active_email_change_request(user.id)
-        email = pending.new_email if pending else None
-
-        return cast("_AnyUser | None", attach_pending_email_sync(user, email))
-
 
 def _hash_token(token: str) -> str:
     """Hash a reset/change token with a dedicated HMAC secret.
