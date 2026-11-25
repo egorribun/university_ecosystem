@@ -17,6 +17,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 }))
 
 import { Alert, Avatar, Chip, CircularProgress, Skeleton, Snackbar } from "../Feedback"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 describe("Feedback primitives", () => {
   it("renders every alert severity and optional close action", () => {
@@ -36,6 +37,14 @@ describe("Feedback primitives", () => {
     render(<Alert>without close</Alert>)
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
     expect(onClose).toHaveBeenCalledTimes(4)
+  })
+
+  it("names the alert close action and keeps it at the 44px target size", () => {
+    render(<Alert onClose={vi.fn()}>saved</Alert>)
+    const close = screen.getByRole("button", { name: /close/i })
+    expect(close).toHaveAttribute("type", "button")
+    expectBaseUtility(close, "width", "calc(var(--spacing) * 11)")
+    expectBaseUtility(close, "height", "calc(var(--spacing) * 11)")
   })
 
   it("renders chips, avatars, and circular progress with forwarded props", () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import MessengerButton from "../MessengerButton"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), unreadCount: 0, t: (key: string) => key }))
 
@@ -30,6 +31,7 @@ describe("MessengerButton", () => {
     render(<MessengerButton />)
 
     expect(screen.getByRole("button")).toHaveAttribute("data-unread", "")
-    expect(screen.getByText("3")).toBeInTheDocument()
+    // The badge sits on the brand surface, which is sky-400 in the dark theme.
+    expectBaseUtility(screen.getByText("3"), "color", "var(--color-inverse-text)")
   })
 })

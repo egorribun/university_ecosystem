@@ -109,7 +109,7 @@ export function PageErrorFallback({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-full bg-(--primary-main) px-6 py-2 font-medium text-white transition-opacity hover:opacity-strong"
+          className="rounded-full bg-(--primary-main) px-6 py-2 font-medium text-inverse-text transition-opacity hover:opacity-strong"
         >
           {t("system:pageError.retry")}
         </button>

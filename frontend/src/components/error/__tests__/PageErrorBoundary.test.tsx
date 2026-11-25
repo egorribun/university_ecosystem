@@ -55,6 +55,7 @@ import {
   PageErrorFallback,
 } from "@/components/error/PageErrorBoundary"
 import { ApiResponseValidationError } from "@/api/validation"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 function Boom(): never {
   throw new Error("kaboom")
@@ -115,6 +116,11 @@ describe("PageErrorBoundary", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument()
     expect(screen.getByText("Page Error")).toBeInTheDocument()
     expect(screen.getByText("Something went wrong loading this page.")).toBeInTheDocument()
+    expectBaseUtility(
+      screen.getByRole("button", { name: "Try Again" }),
+      "color",
+      "var(--color-inverse-text)"
+    )
     expect(useTranslationMock).toHaveBeenCalledWith(["system"])
     // DEV error details branch (import.meta.env.DEV is true under vitest)
     expect(screen.getByText("Non-API Error")).toBeInTheDocument()

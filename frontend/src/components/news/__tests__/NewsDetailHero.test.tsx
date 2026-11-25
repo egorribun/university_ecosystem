@@ -20,6 +20,7 @@ vi.mock("@/hooks/useFocusTrap", () => ({
 }))
 
 import { NewsDetailHero } from "@/components/news/NewsDetailHero"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 const baseProps = {
   imageUrl: "https://picsum.photos/seed/news-detail/1200/675",
@@ -29,8 +30,10 @@ const baseProps = {
 describe("NewsDetailHero", () => {
   it("renders the hero image and a zoom button", () => {
     render(<NewsDetailHero {...baseProps} />)
-    expect(screen.getByRole("button", { name: "news:actions.zoomImage" })).toBeInTheDocument()
+    const zoom = screen.getByRole("button", { name: "news:actions.zoomImage" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expectBaseUtility(zoom, "width", "calc(var(--spacing) * 11)")
+    expectBaseUtility(zoom, "height", "calc(var(--spacing) * 11)")
   })
 
   it("renders fallback caption and lightbox alt text when there is no display title", async () => {
