@@ -153,6 +153,17 @@ test("topics requests report their first unexpected status before the hard asser
   ]) {
     assert.match(spec, hardAssertion)
   }
+  // Cleanup deletions report their status too, so a refused delete is visible.
+  assert.doesNotMatch(spec, /expect\(deletion\.status/u)
+  for (const resource of ["schedule", "news", "event"]) {
+    assert.match(
+      spec,
+      new RegExp(
+        `assertMutationStatus\\(\\s*deletion,\\s*200,\\s*"cleanup deletes only this test's ${resource} UUID"\\s*\\)`,
+        "u"
+      )
+    )
+  }
 })
 
 test("release delivery retains the Russian body marker and exact recipient assertions", async () => {
