@@ -354,8 +354,9 @@ describe("useSessionCrypto mutation contracts", () => {
       expect(result.current.sessionSigningKey).toBe("signing-key-b")
       expect(result.current.sessionSigningKeyRef.current).toBe("signing-key-b")
       expect(getBrowserSessionGeneration()).toBeNull()
+      // The first key suspends; replacing it before it is published clears.
       expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
-        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE },
         { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
       ])
 
@@ -377,8 +378,9 @@ describe("useSessionCrypto mutation contracts", () => {
         nonce: generationNonce,
         hash: "session-hash-b",
       })
+      // The first key suspends; replacing it before it is published clears.
       expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
-        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE },
         { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
@@ -489,7 +491,7 @@ describe("useSessionCrypto mutation contracts", () => {
     })
 
     expect(postMessage.mock.calls).toEqual([
-      [{ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }],
+      [{ type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE }],
       [
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
