@@ -459,6 +459,7 @@ async def test_notification_count_fallback_warning_omits_request_data(
     assert result.unread_count == 1
     log.warning.assert_called_once_with(message)
 
+
 @pytest.mark.asyncio
 async def test_mark_read_single_all_read_and_not_found_paths() -> None:
     user = _user()
