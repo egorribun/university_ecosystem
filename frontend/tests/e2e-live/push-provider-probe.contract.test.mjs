@@ -94,6 +94,7 @@ test("an accepted subscription is kept and nothing is reported", async () => {
   assert.deepEqual(result, { endpoint: "first-endpoint", resubscribed: false })
   assert.equal(resubscribes, 0)
   assert.deepEqual(lines, [])
+  assert.deepEqual(run.waits, [15_000], "a new subscription settles before its first probe")
   assert.equal(run.requests[0].userId, "00000000-0000-4000-8000-000000000001")
   assert.match(run.requests[0].probeTag, /^live-push-provider-probe-[0-9a-f-]{36}$/u)
 })
@@ -109,6 +110,7 @@ test("a provider rejection resubscribes once, is reported, and the new endpoint 
     options(run, {
       resubscribe: async () => {
         resubscribes += 1
+        run.waits.push("resubscribe")
         return "second-endpoint"
       },
       emit: (line) => lines.push(line),
@@ -116,6 +118,11 @@ test("a provider rejection resubscribes once, is reported, and the new endpoint 
   )
   assert.deepEqual(result, { endpoint: "second-endpoint", resubscribed: true })
   assert.equal(resubscribes, 1)
+  assert.deepEqual(
+    run.waits,
+    [15_000, "resubscribe", 15_000],
+    "the replacement subscription also settles before it is probed"
+  )
   assert.equal(lines.length, 1)
   assert.match(lines[0], /scenario=setup check=provider-gone subscription=changed\n$/u)
   assert.notEqual(run.requests[0].probeTag, run.requests[1].probeTag)
@@ -154,7 +161,7 @@ test("a rate-limited probe waits once and is sent again without resubscribing", 
     })
   )
   assert.deepEqual(result, { endpoint: "first-endpoint", resubscribed: false })
-  assert.deepEqual(run.waits, [4_000])
+  assert.deepEqual(run.waits, [15_000, 4_000])
 })
 
 test("an unavailable or failed probe fails without resubscribing", async () => {

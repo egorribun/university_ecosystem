@@ -182,15 +182,21 @@ python -m scripts.live_stand e2e --in-place --state-dir $liveStateDir --mode ful
 python -m scripts.live_stand stop --in-place --state-dir $liveStateDir
 ```
 
-The active MVP plan requires one checkout: use `--in-place` on a clean, frozen
-`egorribun` SHA and keep its generated configuration in an owned temporary run
-directory. The CLI assigns a separate Compose project and checks resource
-ownership; `stop` preserves demo data, while explicit `teardown` deletes only
-the validated run resources. Product acceptance uses Core; the frozen-release
-full smoke explicitly uses `--stack full`. Coordinate any source edits until
-the live run ends. Infrastructure-backed checks run only when their
-services are available; a missing optional service is reported as an explicit
-environment skip, never as a pass.
+Run the example in one clean checkout. With `--in-place`, `--ref` must match
+that checkout's `HEAD`. The live Playwright setup verifies the endpoints with
+`uv run --frozen --no-sync` in that checkout. In a fresh worktree, run
+`uv sync --frozen` before `e2e`; otherwise setup fails before any test runs.
+For the shared Stage 4 and 5 stand, check out the exact
+`main` commit selected in the [MVP release plan](docs/superpowers/plans/MVP_MASTER_PLAN.md#4-критический-путь)
+before starting Core. A developer run on `egorribun` does not replace acceptance
+and restore evidence collected on that `main` commit.
+
+Keep the generated configuration in an owned temporary run directory. The CLI
+assigns a separate Compose project and checks resource ownership; `stop`
+preserves demo data, while explicit `teardown` deletes only the validated run
+resources. Product acceptance uses Core; the frozen-release full smoke
+explicitly uses `--stack full`. Coordinate any source edits until the live run
+ends. A missing optional service is an explicit environment skip, never a pass.
 
 Supply the same `--state-dir` with every `--in-place` command. The directory
 must be a direct `run-*` child under Python's temporary `ue-live-acceptance`
