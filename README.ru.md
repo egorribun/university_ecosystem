@@ -276,7 +276,7 @@ make test-integration # Запуск интеграционных тестов A
 - **OpenTelemetry & Tempo**: Сквозная распределенная трассировка микросервисов Go и FastAPI.
 - **Prometheus**: Счётчики L1-кэша отзыва Gateway включают `gateway_l1_cache_hits_total` и `gateway_l1_cache_misses_total`.
 - **Pyroscope**: Непрерывное профилирование ресурсов процессора и памяти (`grafana/pyroscope:2.3.1`).
-- **Grafana Loki + Fluent Bit**: Централизованный логгирование с анонимизацией персональных данных (ADR-012).
+- **Grafana Loki**: Централизованный сбор логов. В Docker Compose логи контейнеров собирает Grafana Alloy; в архитектуре Kubernetes для этого предусмотрен Fluent Bit. См. [ADR-012](docs/adr/ADR-012-centralized-logging.md).
 
 ---
 
