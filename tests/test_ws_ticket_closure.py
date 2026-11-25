@@ -85,6 +85,7 @@ async def test_issue_ws_upgrade_ticket_does_not_log_session_identifier() -> None
     rendered_message = template % tuple(args)
     assert session.jti[:8] not in rendered_message
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("active", "revoked", "expired", "session_user_id", "case"),
