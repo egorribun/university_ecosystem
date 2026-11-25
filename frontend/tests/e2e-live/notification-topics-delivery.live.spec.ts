@@ -22,6 +22,7 @@ import {
   createPushRecipientObservation,
   observePushCleanup,
 } from "./push-recipient-observation.mjs"
+import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
 const expandPushAccordion = async (page: Page): Promise<void> => {
   const accordion = page.getByRole("button", { name: /Push notifications|Push-уведомления/u })
@@ -164,8 +165,17 @@ const expectUuid = (value: unknown, description: string): string => {
   return value
 }
 
+// Report the first unexpected request status of an attempt; the assertion still fails it.
+let topicsStatusProject: string | null = null
+const reportTopicsStatus = (status: number, expected = 200) => {
+  if (status === expected || topicsStatusProject === null) return
+  reportLiveHttpStatus(topicsStatusProject, "topics-status", status)
+  topicsStatusProject = null
+}
+
 const readJson = async <T>(page: Page, path: string, description: string): Promise<T> => {
   const response = await page.request.get(path)
+  reportTopicsStatus(response.status())
   expect(response.status(), description).toBe(200)
   return (await response.json()) as T
 }
@@ -225,6 +235,7 @@ const listUsersCompletely = async (adminPage: Page, groupId?: string): Promise<U
     if (groupId) query.set("group_id", groupId)
     if (afterId) query.set("after_id", afterId)
     const response = await adminPage.request.get(`/api/v1/users?${query.toString()}`)
+    reportTopicsStatus(response.status())
     expect(response.status(), "admin can enumerate every recipient page").toBe(200)
     const pageUsers = (await response.json()) as UserRow[]
     if (!Array.isArray(pageUsers) || pageUsers.length > PAGE_SIZE) {
@@ -1108,6 +1119,7 @@ const assertMutationStatus = (
   expectedStatus: number,
   description: string
 ): Record<string, unknown> => {
+  reportTopicsStatus(result.status, expectedStatus)
   expect(result.status, description).toBe(expectedStatus)
   if (result.body === null || typeof result.body !== "object") {
     throw new Error(`${description} returned a malformed response`)
@@ -1121,6 +1133,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   nativePushProfiles,
 }, testInfo) => {
   test.setTimeout(360_000)
+  topicsStatusProject = testInfo.project.name
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
   const recipientObservation = createPushRecipientObservation(

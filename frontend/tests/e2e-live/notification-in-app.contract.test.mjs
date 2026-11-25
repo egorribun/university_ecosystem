@@ -135,6 +135,26 @@ test("notification reads explicitly select the locale of the release marker on e
   assert.match(reader, /\.toBe\(\s*"ru"\s*\)/u)
 })
 
+test("topics requests report their first unexpected status before the hard assertion", async () => {
+  const spec = await readFile(topicsSpecUrl, "utf8")
+  assert.match(spec, /import \{ reportLiveHttpStatus \} from "\.\/http-status-diagnostic"/u)
+  assert.match(spec, /topicsStatusProject = testInfo\.project\.name/u)
+  const reporter = spec.slice(
+    spec.indexOf("const reportTopicsStatus ="),
+    spec.indexOf("const readJson =")
+  )
+  assert.match(reporter, /reportLiveHttpStatus\(topicsStatusProject, "topics-status", status\)/u)
+  // Only the first unexpected status of an attempt is reported.
+  assert.match(reporter, /topicsStatusProject = null/u)
+  for (const hardAssertion of [
+    /reportTopicsStatus\(response\.status\(\)\)\s+expect\(response\.status\(\), description\)\.toBe\(200\)/u,
+    /reportTopicsStatus\(response\.status\(\)\)\s+expect\(response\.status\(\), "admin can enumerate every recipient page"\)\.toBe\(200\)/u,
+    /reportTopicsStatus\(result\.status, expectedStatus\)\s+expect\(result\.status, description\)\.toBe\(expectedStatus\)/u,
+  ]) {
+    assert.match(spec, hardAssertion)
+  }
+})
+
 test("release delivery retains the Russian body marker and exact recipient assertions", async () => {
   const spec = await readFile(topicsSpecUrl, "utf8")
   assert.match(

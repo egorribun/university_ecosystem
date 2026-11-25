@@ -46,6 +46,7 @@ export type LiveHttpStatusCheck =
   | "email-mfa-enabled-login"
   | "email-mfa-login-resend-early"
   | "email-mfa-login-accept"
+  | "topics-status"
 
 const LIVE_HTTP_STATUS_PROJECTS = 2 // desktop and mobile
 // A check reports at most one status per attempt, so two attempts bound its records.
@@ -81,8 +82,9 @@ const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
   "email-mfa-enabled-login",
   "email-mfa-login-resend-early",
   "email-mfa-login-accept",
+  "topics-status",
 ])
-// Derived from the closed check set: projects x checks x attempts (2 x 30 x 2 = 120).
+// Derived from the closed check set: projects x checks x attempts (2 x 31 x 2 = 124).
 const MAX_RECORDS =
   LIVE_HTTP_STATUS_PROJECTS * LIVE_HTTP_STATUS_CHECKS.size * LIVE_HTTP_STATUS_ATTEMPTS
 
@@ -333,7 +335,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "not-found-i18n.live.spec.ts": [11, 65],
   "notification-in-app.live.spec.ts": [293],
   "notification-preferences.live.spec.ts": [217],
-  "notification-topics-delivery.live.spec.ts": [1118],
+  "notification-topics-delivery.live.spec.ts": [1130],
   "password-reset.live.spec.ts": [129],
   "profile-csrf.live.spec.ts": [99],
   "profile-persistence.live.spec.ts": [102, 302],

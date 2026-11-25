@@ -94,6 +94,7 @@ test("an accepted subscription is kept and nothing is reported", async () => {
   assert.deepEqual(result, { endpoint: "first-endpoint", resubscribed: false })
   assert.equal(resubscribes, 0)
   assert.deepEqual(lines, [])
+  assert.deepEqual(run.waits, [15_000], "a new subscription settles before its first probe")
   assert.equal(run.requests[0].userId, "00000000-0000-4000-8000-000000000001")
   assert.match(run.requests[0].probeTag, /^live-push-provider-probe-[0-9a-f-]{36}$/u)
 })
@@ -109,6 +110,7 @@ test("a provider rejection resubscribes once, is reported, and the new endpoint 
     options(run, {
       resubscribe: async () => {
         resubscribes += 1
+        run.waits.push("resubscribe")
         return "second-endpoint"
       },
       emit: (line) => lines.push(line),
@@ -116,6 +118,11 @@ test("a provider rejection resubscribes once, is reported, and the new endpoint 
   )
   assert.deepEqual(result, { endpoint: "second-endpoint", resubscribed: true })
   assert.equal(resubscribes, 1)
+  assert.deepEqual(
+    run.waits,
+    [15_000, "resubscribe", 15_000],
+    "the replacement subscription also settles before it is probed"
+  )
   assert.equal(lines.length, 1)
   assert.match(lines[0], /scenario=setup check=provider-gone subscription=changed\n$/u)
   assert.notEqual(run.requests[0].probeTag, run.requests[1].probeTag)
@@ -141,6 +148,7 @@ test("a second provider rejection resubscribes again and uses the third endpoint
   assert.deepEqual(result, { endpoint: "third-endpoint", resubscribed: true })
   assert.equal(resubscribes, 2)
   assert.equal(lines.length, 2, "each resubscribe is reported")
+  assert.deepEqual(run.waits, [15_000, 15_000, 15_000], "every probe follows a settle")
   assert.equal(new Set(run.requests.map((request) => request.probeTag)).size, 3)
 })
 
@@ -179,7 +187,7 @@ test("a rate-limited probe waits once and is sent again without resubscribing", 
     })
   )
   assert.deepEqual(result, { endpoint: "first-endpoint", resubscribed: false })
-  assert.deepEqual(run.waits, [4_000])
+  assert.deepEqual(run.waits, [15_000, 4_000])
 })
 
 test("an unavailable or failed probe fails without resubscribing", async () => {
