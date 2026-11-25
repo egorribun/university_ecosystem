@@ -10,7 +10,7 @@ const DEFAULT_REPORT_PATH = path.resolve(process.cwd(), "bundle-report.json")
 const ASSET_EXTENSIONS = new Set([".js", ".mjs", ".css"])
 const HTML_LIMIT = 1024 * 1024
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
-const MAPLIBRE_LAZY_GZIP_KB = 290
+const MAPLIBRE_LAZY_GZIP_KB = 292
 
 // parse5 preserves browser tree recovery without reporting every mismatched end
 // tag. Require a real closing token where HTML does not permit its omission.

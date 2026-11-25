@@ -230,9 +230,9 @@ class DocsSourceAlignmentTests(unittest.TestCase):
                 "passwordDictionaryGzipKb": 600,
             },
         )
-        self.assertRegex(bundle_source, r"MAPLIBRE_LAZY_GZIP_KB\s*=\s*290")
+        self.assertRegex(bundle_source, r"MAPLIBRE_LAZY_GZIP_KB\s*=\s*292")
         self.assertIn("bytes / 1024", bundle_source)
-        expected_budget_values = {*source_budgets.values(), 290}
+        expected_budget_values = {*source_budgets.values(), 292}
 
         for document, row_label, measurement_note in (
             (readme, "**Frontend transfer budgets**", "not measured bundle sizes"),

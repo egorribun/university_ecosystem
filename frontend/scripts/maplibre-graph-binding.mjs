@@ -494,8 +494,8 @@ function validatePackage(metadata, sources, installedBytes) {
   const entry = lock.packages?.["node_modules/maplibre-gl"]
   requireInput(
     installed.name === "maplibre-gl" &&
-      installed.version === "6.18.0" &&
-      entry?.version === "6.18.0" &&
+      installed.version === "6.19.0" &&
+      entry?.version === "6.19.0" &&
       typeof entry.integrity === "string" &&
       /^sha512-[A-Za-z0-9+/=]+$/u.test(entry.integrity)
   )
@@ -857,7 +857,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
       rawBytes: candidate.rawBytes,
       gzipBytes: candidate.gzipBytes,
       sha256: candidate.sha256,
-      packageVersion: "6.18.0",
+      packageVersion: "6.19.0",
       staticInitialReachable: false,
       runtimeClosure: "unproved",
     }

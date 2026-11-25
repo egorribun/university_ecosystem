@@ -54,7 +54,7 @@ The checked-in sources define these profiles and limits:
 | **Schedule conflict solver** | Native batch input is capped at 2,500 items. Criterion fixtures cover 10, 50, 100 and 500 items; the benchmark fixture rejects values above 576. | Input and benchmark-profile limits, not comparative latency. |
 | **WebSocket stress profile (ws-hub)** | 10,000 virtual users. With a relaxed upgrade limiter, thresholds are auth errors <1%, p95 connection setup under 2 seconds, more than 50,000 received messages and at least 100 successful upgrades. A default single-IP run expects 429 responses. | Stress-profile checks, not requests-per-second throughput. |
 | **Gateway L1 revocation cache** | Positive revocation tombstones only; probabilistic XFetch early refresh requests a live Redis recheck before TTL expiry. | Reduces synchronized recheck risk; it does not guarantee zero cache stampedes. |
-| **Frontend transfer budgets** | Main JS raw ≤500 KiB; initial JS gzip ≤420 KiB; initial CSS gzip ≤40 KiB; general lazy JS gzip ≤280 KiB. | Password dictionaries ≤1,250 KiB raw / ≤600 KiB gzip; MapLibre lazy JS gzip ≤290 KiB. These are configured ceilings, not measured bundle sizes. |
+| **Frontend transfer budgets** | Main JS raw ≤500 KiB; initial JS gzip ≤420 KiB; initial CSS gzip ≤40 KiB; general lazy JS gzip ≤280 KiB. | Password dictionaries ≤1,250 KiB raw / ≤600 KiB gzip; MapLibre lazy JS gzip ≤292 KiB. These are configured ceilings, not measured bundle sizes. |
 
 ## 📂 Project Structure
 
