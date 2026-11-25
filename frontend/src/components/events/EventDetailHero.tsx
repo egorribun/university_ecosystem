@@ -101,7 +101,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
-          className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/[calc(var(--opacity-strong)*100%)] text-[var(--text-inverse)] backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="absolute bottom-3 right-3 flex size-11 items-center justify-center rounded-full bg-black/[calc(var(--opacity-strong)*100%)] text-white backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           aria-label={t("events:detail.actions.zoom")}
         >
           <ZoomIn size={16} />

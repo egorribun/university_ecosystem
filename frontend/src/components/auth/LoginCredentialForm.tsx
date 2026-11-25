@@ -113,7 +113,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               disabled={controlsDisabled}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               title={
                 t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
                 undefined

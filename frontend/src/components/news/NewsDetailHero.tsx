@@ -119,7 +119,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           <button
             type="button"
             onClick={() => setLightboxOpen(true)}
-            className="absolute bottom-3 right-3 z-surface inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-sm text-white/[calc(var(--opacity-heavy)*100%)] shadow-sm transition hover:bg-black/[calc(var(--opacity-heavy)*100%)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
+            className="absolute bottom-3 right-3 z-surface inline-flex size-11 items-center justify-center rounded-xl bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-sm text-white/[calc(var(--opacity-heavy)*100%)] shadow-sm transition hover:bg-black/[calc(var(--opacity-heavy)*100%)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
             aria-label={t("news:actions.zoomImage")}
           >
             <ZoomIn size={16} />
@@ -144,7 +144,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
           <button
             type="button"
             onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 z-surface inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-white transition hover:bg-white/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
+            className="absolute top-4 right-4 z-surface inline-flex size-11 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-white transition hover:bg-white/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
             aria-label={t("common:buttons.close")}
           >
             <CloseIcon size={20} />

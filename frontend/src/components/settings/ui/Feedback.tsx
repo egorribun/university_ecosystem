@@ -1,4 +1,5 @@
 import React, { useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
@@ -14,6 +15,7 @@ export function Alert({
   onClose?: () => void
   className?: string
 }) {
+  const { t } = useTranslation("common")
   const palette = {
     info: "bg-(--brand-main)/[calc(var(--opacity-dim)*100%)] text-(--brand-main) border-(--brand-main)/[calc(var(--opacity-dim)*100%)]",
     error:
@@ -36,8 +38,10 @@ export function Alert({
       <span className="flex-1 text-sm font-semibold leading-relaxed">{children}</span>
       {onClose && (
         <button
+          type="button"
           onClick={onClose}
-          className="rounded-xs p-1 transition hover:bg-black/[calc(var(--opacity-faint)*100%)] dark:hover:bg-white/[calc(var(--opacity-faint)*100%)]"
+          aria-label={t("common:buttons.close")}
+          className="-my-3 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-xs transition hover:bg-black/[calc(var(--opacity-faint)*100%)] dark:hover:bg-white/[calc(var(--opacity-faint)*100%)]"
         >
           ×
         </button>

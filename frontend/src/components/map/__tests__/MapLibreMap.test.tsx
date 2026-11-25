@@ -241,6 +241,34 @@ function currentMoveEndHandler() {
   return renderedMapProps.current.onMoveEnd as (event: { originalEvent?: unknown }) => void
 }
 
+function currentMoveStartHandler() {
+  return renderedMapProps.current.onMoveStart as (event: { originalEvent?: unknown }) => void
+}
+
+function captureIntroSchedule() {
+  let pendingFrame: FrameRequestCallback | undefined
+  let introCallback: (() => void) | undefined
+  const realSetTimeout = globalThis.setTimeout
+  const spies = [
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback
+      return 1
+    }),
+    vi.spyOn(globalThis, "setTimeout").mockImplementation((handler, timeout) => {
+      if (timeout === 300) {
+        introCallback = handler as unknown as () => void
+        return 99 as unknown as ReturnType<typeof globalThis.setTimeout>
+      }
+      return realSetTimeout(handler, timeout)
+    }),
+  ]
+  return {
+    runFrame: () => act(() => pendingFrame?.(0)),
+    introCallback: () => introCallback,
+    restore: () => spies.forEach((spy) => spy.mockRestore()),
+  }
+}
+
 const baseProps = {
   selectedBuilding: null,
   activeCategory: "all" as const,
@@ -1031,6 +1059,63 @@ describe("MapLibreMap", () => {
       pitch: 45,
       bearing: 0,
     })
+  })
+
+  it("latches URL synchronization on a user movestart when the last moveend has no DOM event", () => {
+    const onMapMoveEnd = vi.fn()
+    render(
+      <MapLibreMapComponent
+        {...baseProps}
+        onMapMoveEnd={onMapMoveEnd}
+        mapRef={makeRef(makeMap())}
+      />
+    )
+
+    act(() => {
+      currentMoveStartHandler()({})
+      currentMoveEndHandler()({})
+    })
+    expect(onMapMoveEnd).not.toHaveBeenCalled()
+
+    // A wheel that interrupts the intro: the intro's moveend arrives without
+    // originalEvent after the wheel's movestart.
+    act(() => {
+      currentMoveStartHandler()({ originalEvent: { type: "wheel" } })
+      currentMoveEndHandler()({})
+    })
+    expect(onMapMoveEnd).toHaveBeenCalledTimes(1)
+    expect(onMapMoveEnd).toHaveBeenCalledWith(expect.objectContaining({ zoom: 16 }))
+  })
+
+  it("does not fly the intro over a gesture that began while it was pending", () => {
+    const map = makeMap()
+    const schedule = captureIntroSchedule()
+    try {
+      render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+      schedule.runFrame()
+      expect(schedule.introCallback()).toBeDefined()
+      act(() => currentMoveStartHandler()({ originalEvent: { type: "wheel" } }))
+      act(() => schedule.introCallback()?.())
+      expect(map.flyTo).not.toHaveBeenCalled()
+    } finally {
+      schedule.restore()
+    }
+  })
+
+  it("skips the intro when a gesture began before the map finished loading", () => {
+    const map = makeMap()
+    const schedule = captureIntroSchedule()
+    try {
+      render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+      act(() => currentMoveStartHandler()({ originalEvent: { type: "wheel" } }))
+      schedule.runFrame()
+      expect(map.resize).toHaveBeenCalled()
+      expect(schedule.introCallback()).toBeUndefined()
+      expect(map.flyTo).not.toHaveBeenCalled()
+      expect(map.jumpTo).not.toHaveBeenCalled()
+    } finally {
+      schedule.restore()
+    }
   })
 
   it("uses the latest URL synchronization callback after a rerender", () => {

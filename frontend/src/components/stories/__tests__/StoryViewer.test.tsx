@@ -1,4 +1,7 @@
 import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
+import compiledCss from "@/styles/tailwind.css?inline"
+import postcss from "postcss"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -684,17 +687,43 @@ describe("StoryViewer", () => {
     expect(document.body.style.overflow).toBe("scroll")
   })
 
+  it("plays every story on a dark stage in both themes", async () => {
+    await renderViewer()
+    expect(document.querySelector('[role="presentation"]')).toHaveClass(
+      "bg-black/[calc(var(--opacity-heavy)*100%)]"
+    )
+    // One theme-independent definition each: the white copy, progress bars and
+    // controls sit on slate-950 and blue-700, never on the light page colour.
+    // Lightning CSS adds a hex fallback for browsers without color-mix().
+    const declarations = new Map<string, { selector: string; value: string }[]>()
+    postcss.parse(compiledCss).walkDecls(/^--(grad-story-fade|story-stage-fallback)$/, (decl) => {
+      const selector = decl.parent?.type === "rule" ? (decl.parent as postcss.Rule).selector : ""
+      declarations.set(decl.prop, [
+        ...(declarations.get(decl.prop) ?? []),
+        { selector, value: decl.value },
+      ])
+    })
+    for (const name of ["--grad-story-fade", "--story-stage-fallback"]) {
+      const entries = declarations.get(name) ?? []
+      expect(entries.length, name).toBeGreaterThan(0)
+      for (const { selector, value } of entries) {
+        expect(selector, name).toBe(":root")
+        expect(value).toMatch(/var\(--color-slate-950\)|#020618/)
+        expect(value).not.toMatch(/--bg-page|--primary-subtle-bg|--primary-main/)
+      }
+    }
+  })
+
   it("renders the visual and accessibility variants for image and text stories", async () => {
     const { rerender } = await renderViewer({
       stories: [{ ...mockStories[0]!, cover_url: "https://cdn.example.com/story.jpg" }],
     })
     const imageDialog = screen.getByRole("dialog", { name: "Story 1" })
     const imageStage = imageDialog.querySelector('[class*="aspect-9/16"]')!
-    expect(imageStage).toHaveClass("bg-page", "rounded-none")
+    expect(imageStage).toHaveClass("bg-black", "rounded-none")
     const imageOverlay = imageStage.querySelector('[class*="absolute bottom-0"]')!
     expectInlineStyle(imageOverlay, {
-      backgroundImage:
-        "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)",
+      backgroundImage: "var(--grad-story-fade)",
       backdropFilter: "blur(var(--blur-glass))",
     })
 
@@ -706,7 +735,8 @@ describe("StoryViewer", () => {
     )
     const textDialog = screen.getByRole("dialog", { name: "Fallback" })
     const textStage = textDialog.querySelector('[class*="aspect-9/16"]')!
-    expect(textStage).toHaveClass("bg-brand", "rounded-md")
+    expect(textStage).toHaveClass("rounded-md")
+    expectBaseUtility(textStage as HTMLElement, "background-image", "var(--story-stage-fallback)")
     const textOverlay = textStage.querySelector('[class*="absolute bottom-0"]')!
     expectInlineStyle(textOverlay, { backgroundImage: "var(--grad-story-fade)" })
     expect(screen.getByText("FA")).toBeInTheDocument()

@@ -106,7 +106,7 @@ export function useEventFilterPopover({
                     type="button"
                     onClick={() => onDateRangeChange(opt.value)}
                     className={cn(
-                      "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-brand",
+                      "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-brand",
                       dateRange === opt.value
                         ? "bg-brand text-[var(--text-inverse)] shadow-sm"
                         : "matte-chip text-(--text-secondary) hover:text-text-primary"

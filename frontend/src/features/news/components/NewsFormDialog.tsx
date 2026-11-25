@@ -18,7 +18,7 @@ import {
 } from "@/utils/telemetryContext"
 
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
 const textareaClass = cn(inputClass, "min-h-36 resize-y leading-relaxed")
 const errorClass = "text-error-text text-xs mt-1 font-medium"
 
