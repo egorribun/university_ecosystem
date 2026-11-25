@@ -189,7 +189,7 @@ async def test_create_event_persists_notification_source_outbox_event(
 
 @pytest.mark.asyncio
 async def test_events_etag_and_not_modified(
-    async_client, db_session, user_factory, fake_cache
+    async_client, db_session, user_factory, fake_cache, monkeypatch
 ):
     await events.events_cache_version.reset(fake_cache)
     assert fake_cache is not None
@@ -199,6 +199,8 @@ async def test_events_etag_and_not_modified(
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     now = datetime.now(UTC)
+    # Keep the signed QR token stable across the conditional requests in this test.
+    monkeypatch.setattr(attendance_tokens, "_now", lambda: now)
     event = models.Event(
         title="Test event",
         description="Primary description",
