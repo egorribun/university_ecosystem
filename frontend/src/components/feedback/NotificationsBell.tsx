@@ -178,7 +178,7 @@ export default function NotificationsBell() {
         aria-label={t("system:notificationsBell.open")}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        aria-controls="notifications-center"
+        aria-controls={isOpen ? "notifications-center" : undefined}
       >
         <Bell
           className={cn("nav-action-icon bell-wiggle", isOpen && "rotate-[-10deg]")}
