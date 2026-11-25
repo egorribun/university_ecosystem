@@ -215,8 +215,8 @@ async def test_redis_session_backend_publish_failure_keeps_revocation_successful
     revocation_client.set.assert_awaited_once()
     cache_client.delete.assert_awaited_once_with(f"session:v2:{jti}")
     mock_logger.warning.assert_called_once_with(
-        "Failed to publish session revocation for jti=%s",
-        jti,
+        "Failed to publish session revocation",
+        error_type="RedisError",
     )
 
 
