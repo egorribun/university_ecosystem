@@ -31,7 +31,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 GITLEAKS_CONFIG_PATH = REPOSITORY_ROOT / ".gitleaks.toml"
 GITLEAKS_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "gitleaks.yml"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-SETUP_GO_ACTION = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+SETUP_GO_ACTION = "actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5"
 UPLOAD_ARTIFACT_ACTION = (
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 )
