@@ -227,7 +227,8 @@ const Select = ({
         role="combobox"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        aria-controls={listboxId}
+        // The listbox exists only while open; never reference a missing element.
+        aria-controls={isOpen ? listboxId : undefined}
         aria-activedescendant={
           isOpen && activeIndex !== undefined ? computeOptionId(activeIndex) : undefined
         }
