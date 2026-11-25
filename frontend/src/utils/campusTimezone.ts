@@ -10,35 +10,39 @@ type CampusClockParts = {
   second: number
 }
 
-let clockFormatter: { timeZone: string; formatter: Intl.DateTimeFormat } | null = null
-
-function getClockFormatter(timeZone: string): Intl.DateTimeFormat {
-  if (clockFormatter?.timeZone === timeZone) return clockFormatter.formatter
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    calendar: "gregory",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    month: "2-digit",
-    numberingSystem: "latn",
-    second: "2-digit",
-    timeZone,
-    year: "numeric",
-  })
-  clockFormatter = { timeZone, formatter }
-  return formatter
+// Building an Intl.DateTimeFormat is expensive and markers call these helpers on
+// every render. The campus uses one zone, so a single slot per shape suffices.
+function cachedFormatter(
+  options: Omit<Intl.DateTimeFormatOptions, "timeZone">
+): (timeZone: string) => Intl.DateTimeFormat {
+  let slot: { timeZone: string; formatter: Intl.DateTimeFormat } | null = null
+  return (timeZone) => {
+    if (slot?.timeZone !== timeZone) {
+      slot = { timeZone, formatter: new Intl.DateTimeFormat("en-CA", { ...options, timeZone }) }
+    }
+    return slot.formatter
+  }
 }
 
-const datePartFormatter = (timeZone: string) =>
-  new Intl.DateTimeFormat("en-CA", {
-    calendar: "gregory",
-    day: "2-digit",
-    month: "2-digit",
-    numberingSystem: "latn",
-    timeZone,
-    year: "numeric",
-  })
+const getClockFormatter = cachedFormatter({
+  calendar: "gregory",
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+  minute: "2-digit",
+  month: "2-digit",
+  numberingSystem: "latn",
+  second: "2-digit",
+  year: "numeric",
+})
+
+const datePartFormatter = cachedFormatter({
+  calendar: "gregory",
+  day: "2-digit",
+  month: "2-digit",
+  numberingSystem: "latn",
+  year: "numeric",
+})
 
 const getCalendarParts = (date: Date, timeZone: string): CalendarDateParts => {
   const parts = datePartFormatter(timeZone).formatToParts(date)

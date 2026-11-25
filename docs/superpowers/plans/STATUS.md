@@ -1,75 +1,59 @@
 # Статус выпуска MVP v1.0.0 — краткий текущий срез
 
 Здесь только текущее состояние. Прошлые срезы, журналы hosted-run и доказательства —
-в истории файла: `git log -- docs/superpowers/plans/STATUS.md`.
+в истории файла: `git log -- docs/superpowers/plans/STATUS.md`. Покрытие строк ТЗ — в
+[матрице трассируемости](../../testing/mvp-traceability-matrix.md).
 
-## Текущий срез — 2026-11-23
+## Текущий срез — 2026-11-24
 
 ### `main` и пакет PR
 
-- `main` = `a2d295bc7b710a3db58956841146d43a6b086cbe` после обычного merge
-  [#1576](https://github.com/egorribun/university_ecosystem/pull/1576). На этом SHA прошли
-  [main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45216325892).
-- Для [quality evidence 14841408152](https://github.com/egorribun/university_ecosystem/actions/runs/45216326353/artifacts/14841408152)
-  независимо проверены SHA-256 архива и манифеста, схема и 13 компонентов.
-- Исторический `main` `15d7cadf46b4846b2ec56c6a054993357351b226` получен merge
-  [#1573](https://github.com/egorribun/university_ecosystem/pull/1573). [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801) и
-  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45136172080) прошли. У [quality evidence 14801686539](https://github.com/egorribun/university_ecosystem/actions/runs/45136172801/artifacts/14801686539)
-  сверены SHA-256 архива и манифеста, точный source SHA и 13 компонентов. Эти доказательства относятся к тому SHA.
-- Все черновики облачного агента и старые черновики закрыты по решению владельца 2026-11-23: #1426,
-  #1506, #1507, #1557–#1561, #1563, #1565. Обновления Dependabot #1571 (кроме @lhci/cli) и #1572
-  перенесены коммитами владельца.
+- `main` = `7e54feee0397bbe3359dd4d5631f57cbc5604eb2` после обычного merge
+  [#1577](https://github.com/egorribun/university_ecosystem/pull/1577) 2026-11-23 в 19:22:45 UTC.
+  [Main-push CI](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383) и
+  [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/45248331850) прошли.
+  [Quality evidence 14856563853](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14856563853):
+  SHA-256 архива `dd85291cb583dad0ec912f859b9e3622801f5c27ca84afb15f1216130ec726b8`, 13 компонентов, Tier 0 ready.
+- 2026-11-23 влиты [#1574](https://github.com/egorribun/university_ecosystem/pull/1574),
+  [#1576](https://github.com/egorribun/university_ecosystem/pull/1576) и #1577: перечисления фильтров событий,
+  CSRF-ключ admin smoke, патчи Dependabot #1571/#1572, скрытие email участников чата, ускорение карты,
+  ADR-056 о блокировке входа по email, исправления доступности.
+- [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) открыт: работа перерыва 2026-11-23/24 и
+  исправления 2026-11-24. Его required checks на текущем head ещё не получены.
+  - Caddy: `libcrypto3`/`libssl3` `3.5.9-r1` (исключение из cooldown,
+    [DEPENDENCY_COOLDOWN_EMERGENCY.md](../../DEPENDENCY_COOLDOWN_EMERGENCY.md), истекает 2026-11-30).
+  - ws-hub: `gorilla/websocket` на псевдоверсии с исправлением GO-2026-6278; подтверждение допуска
+    в комнату (R23); Go-обновления из Dependabot #1579/#1580.
+  - Статистика: пакетное чтение холодной сводки и fence заполнения кэша для Redis, Tiered и Memory.
+    На NATS KV сводка не кэшируется.
+  - Auth и профиль: одна JOIN-выборка сессии и пользователя, `/me` без записи pending email.
+  - Чат: email не попадает в события typing и во внутренние проекции отправителя.
+  - Доступность: brand-поверхности расписания используют `text-inverse-text` (тёмная тема 2.1:1 → 9.5:1).
+  - Карта: раскладка маркеров рендерится как transition, Intl-форматтеры кэшируются.
+  - npm: react-i18next 18.0.2 и axe-core 4.14.1 из #1575. Для `@lhci/cli` ≥ 0.16 (FSL) добавлен ignore Dependabot.
+  - Live-стенд: повторный старт Core с сохранением подписанных портов; диагностика R23 и footer.
 
 ### Полный Core на `main`
 
-На `a2d295bc7b710a3db58956841146d43a6b086cbe` первая попытка [run 45216520095, job 137839027140](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/job/137839027140)
-завершилась неуспешно из-за нестабильного desktop-теста footer с ошибкой консоли. Итог **223 passed, 0 failed, 8 skipped, 1 flaky**.
-Все шесть результатов AUD-154 получены с первой попытки. [Receipt 14842876037](https://github.com/egorribun/university_ecosystem/actions/runs/45216520095/artifacts/14842876037)
-имеет SHA-256 `290234f080d1ac92671b8fc551c11209c193b91fe191ed22cd594d54daa3c964`.
-Следующая пара нужна на стабильном SHA `main`.
+Зачтённой пары нет. Нужны два последовательных green на неизменном `main` с интервалом фактических
+стартов не менее двух часов. Во время серии ничего не сливать в `main`.
 
-Серия на `15d7cadf4` сброшена, её история приведена ниже.
+| Запуск на `7e54feee` | Итог |
+| --- | --- |
+| [45248403311](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/job/137951197987), 2026-11-23 19:24Z | **222 passed, 1 failed, 8 skipped, 1 flaky**. Упал desktop R23 `messenger-group-isolation`, mobile `notification-topics-delivery` прошёл со второй попытки (push 410). Все шесть AUD-154 с retry 0. [Receipt 14858397170](https://github.com/egorribun/university_ecosystem/actions/runs/45248403311/artifacts/14858397170) `b8457ddf032c51598df063fd54245f1ae4dad05aa9b063217850ddf5bcb1154b` |
+| [45402369753](https://github.com/egorribun/university_ecosystem/actions/runs/45402369753), `schedule` 2026-11-24 13:20Z | Стенд не собрался: Alpine убрал `libssl3=3.5.9-r0` из индекса. Результата Core нет |
 
-| Запуск | Итог | Receipt и SHA-256 |
-| --- | --- | --- |
-| [45139263654, job 137572924120](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/job/137572924120), `workflow_dispatch` | **224 passed, 0 failed, 8 skipped, 0 flaky** | [14803902142](https://github.com/egorribun/university_ecosystem/actions/runs/45139263654/artifacts/14803902142) `2dbc08cb2a65c1e46f34b9c7e87d92c40a43423d2ca3b991960c6df2c3013dce` |
-| [45166882952](https://github.com/egorribun/university_ecosystem/actions/runs/45166882952), `workflow_dispatch` | отменён, результата Core нет | — |
-| [45169213982, job 137709440731](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/job/137709440731), `schedule` | **222 passed, 1 failed, 8 skipped, 1 flaky** | [14824608244](https://github.com/egorribun/university_ecosystem/actions/runs/45169213982/artifacts/14824608244) `90d42470c6b089514deb5c9dffbda817a042c7b1c424b6510d78bb0d097c506c` (digest GitHub) |
+- На `a2d295bc7` и `15d7cadf4` серии тоже сорвались: flaky footer с ошибкой консоли, mobile map-zoom
+  52–55 мс при пороге 50 мс. Порог не меняется; код карты ускорен в #1576 и #1578.
+- Открыто: привязка HTTP 410 Web Push к событию и поколению подписки, доставка R23 за 60 секунд
+  на полном пути Caddy/auth/NATS.
 
-- Run 45166882952: attempt 1 завис на установке Chromium (шаг 9 шёл 82 минуты вместо обычных
-  ~36 секунд) и отменён до старта стенда. Attempt 2 отменён до старта, чтобы не дублировать плановый
-  прогон и не нарушить двухчасовой интервал.
-- В плановом прогоне все шесть случаев AUD-154 прошли с первой попытки. Упал mobile
-  `map-zoom-longtask`: long task 52–55 мс при пороге 50 мс в обеих попытках (фаза обновления камеры
-  после клика). Mobile notification topics прошёл со второй попытки: push `news` не пришёл в первой.
-- Нестабильность карты на mobile и доставки Web Push уже встречалась в прогонах 2026-11-23 на `ea78b1fcf`
-  и `facb80d35`.
+### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped)
 
-### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped, 511/512)
-
-- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123)
-  (`workflow_dispatch`, attempt 1). Проверка доверенного source, ZAP и Nuclei прошли.
-- **ZAP.** Gate «medium or high» прошёл: 0 high, 0 medium, 6 low, 18 informational. 40024 не
-  повторился. Provenance привязывает отчёт к `source_sha` `4e9246c99`, этому запуску и
-  закреплённому образу ZAP; `origin_response_verified=true`. `coverage_complete=false` записывается
-  всегда, по дизайну. [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
-  имеет SHA-256 `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`.
-- **Nuclei** прошёл, отчёт пуст.
-  [Артефакт 14768600299](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14768600299)
-  имеет SHA-256 `2a2cdadbe68f11f8092ba731dbf26c6707593323d654ecc6e8e85e72fac5be4f`.
-- Прежний DAST на `fc92e183` ([run 45006312918](https://github.com/egorribun/university_ecosystem/actions/runs/45006312918))
-  давал 1 high (40024). Локально он не воспроизвёлся, ни на одном правиле, ни на полном скане.
-
-### Справочно
-
-- **Сборка Caddy.** Alpine удалил `zlib-1.3.2-r1.apk` из `v3.23/main`. С `01a434839` APK берётся
-  диапазоном байт из официального ISO Alpine 3.23.8, с проверкой размера и прежнего SHA-256 для
-  каждой архитектуры. `libapk` и `apk-tools` закреплены на 3.0.9-r0.
-- **Нагрузка backend** (измерено 2026-11-21). Одна сессия aioboto3 на экземпляр `S3Storage` и
-  event loop, AVIF со speed 8, лимит памяти backend в Compose 768M. Холодная серия из 175
-  изображений: 175/175 ответов 200, p95 3,4 с вместо 21,7 с, событий OOM нет.
-  `/api/v1/img` имеет отдельный бюджет `RATE_LIMIT_STATIC`.
+- [Run 45056164123](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123):
+  ZAP 0 high, 0 medium, 6 low, 18 informational, provenance привязан к `source_sha`.
+  [Артефакт 14767843952](https://github.com/egorribun/university_ecosystem/actions/runs/45056164123/artifacts/14767843952)
+  `3501574ad371dd943148d0431f261a0ba55676f2843e2783b2105ea31be6d8be`. Nuclei прошёл с пустым отчётом.
 
 ## Аудит: текущий итог — 511/512
 
@@ -82,13 +66,11 @@
 
 The current policy-file inventory is **524 dispositions / 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. This is inventory only, not evidence of a passing scan or required checks.
 
-### Открытые находки
-
-Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
-
 | ID | Статус | Что нужно для закрытия |
 | --- | --- | --- |
-| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на неизменном source `main` (эквивалентность принята владельцем), включая read-receipt live spec. После красного второго запуска серия сброшена; для текущего `main` нужны новые доказательства. |
+| AUD-154 | S | Два последовательных green полных Owned Live Acceptance run на неизменном source `main` (эквивалентность принята владельцем), включая read-receipt live spec. Для текущего `main` нужны новые доказательства. |
+
+Состав — из [current 1-finding complement](../../audits/AUDIT-2026-10-30-reconciliation.md#current-1-finding-reconciliation--2026-11-22).
 
 ## MVP-этапы (ссылка: [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md))
 
@@ -96,10 +78,43 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
 | --- | --- |
 | 1. Решение и документы | Выполнен. |
 | 2. Q1 и Q4 в CI | Интегрированы. Каждый новый SHA требует свежих required-check results. |
-| 3. Core и продукт | Подготовлены сценарии и матрица; итоговая приёмка не проведена. |
-| 4. Визуал и performance | Утверждён только Home12. На `a2d295bc7` сняты 96 приватных PNG, в 28 вариантах найдены serious `color-contrast` и `label-content-name-mismatch`. Предстоят исправление находок и утверждение пакета. |
-| 5. Security, ledger, данные | Предстоят подготовка avatar и восстановление DB/S3. Оба локальных owned-стенда остановлены, данные сохранены. |
-| 6. Выпуск | Не начат. |
+| 3. Core и продукт | Сценарии и матрица готовы. Локальные проверки R23, R29, R40, R59, R67 и R83 прошли (см. ниже); приёмка на подписанном стенде не проведена. |
+| 4. Визуал и performance | Пакет 96 PNG на `7e54feee` дал 2 serious `color-contrast` на dark390 `/schedule`; они и тот же дефект на остальных brand-поверхностях исправлены в #1578. Нужен новый пакет после merge; утверждён только Home12. |
+| 5. Security, ledger, данные | Scoped restore DB/S3 подтверждён (ниже). Браузерная проверка avatar на кандидате ожидается. |
+| 6. Выпуск | Предварительные проверки собраны на `7e54feee`. Freeze и публикация v1.0.0 ожидаются. |
+
+Бюджеты сборки на `7e54feee`: main JS 199,10 KiB raw, начальный JS 412,67 KiB gzip, крупнейший lazy-чанк
+217,69 KiB gzip, MapLibre 6.18.0 289,41 KiB gzip
+([bundle report 14855552498](https://github.com/egorribun/university_ecosystem/actions/runs/45248333383/artifacts/14855552498)).
+
+### Локальные проверки этапа 3 (2026-11-24)
+
+Это изолированные локальные прогоны, а не приёмка на подписанном стенде. Детали — в матрице,
+SHA-256 receipts — в версии этого файла на `7d7125330`.
+
+| Строка | Подтверждено локально | Открыто |
+| --- | --- | --- |
+| R23 | Go-хаб с ACK допуска: 671 тест с race, Chromium r1255 на обоих хабах | Полный путь Caddy/auth/NATS за 60 секунд на hosted Core |
+| R29 | Матрица прав групп на ASGI и на реальном HTTP + PostgreSQL с RLS (`alembic upgrade head`) | Подписанный браузерный стенд |
+| R40 | `/stats/summary` в пределах 5 SQL на PostgreSQL + Valkey, свежие данные после инвалидации | Заполненный браузерный сценарий на PostgreSQL/Caddy |
+| R59 | Drawer и быстрые нажатия 390×844, максимум кадра около 16,8 мс | Штатный сценарий на полном стенде |
+| R67 | Production SSR 500 и восстановление в изолированном Chromium | Hosted production-wrapper preflight |
+| R83 | Messenger smoke в Firefox r1572 и WebKit r2388 (mocked) | Hosted nightly, физический Safari |
+| Avatar/S3 | S3 put/head/get/delete, ASGI avatar PNG → WebP в S3 | Браузер и Caddy |
+
+- Карта на production-сборке: первый одиночный wheel после загрузки MapLibre 6.18.0 приходит без
+  `originalEvent`, поэтому `z` в URL не обновляется. Поведение при перекрытии ввода и бюджет 50 мс открыты.
+- News на 720×450: поиск высотой 36 px и английская кнопка `All` шириной 39,23 px меньше цели 44×44.
+- CSRF: отказ до обработчика помечен `X-CSRF-Rejected: 1`. Привязка CSRF к сессии — черновик вне `main`.
+
+### Scoped restore DB/S3 (§7.3)
+
+На disposable owned stand на `7e54feee` проверены Alembic `202611200001`, 155 таблиц и 385 строк, 35 объектов
+и 35 версий S3. Source DB и bucket совпали с baseline, две пробы DB→S3Storage совпали побайтно.
+SHA-256 manifest `0b296bb76e904327b518136e3dd1afd0f3f4b783b338f9fcc99253ba31ec5cd6`,
+dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`.
+Это quiesced локальная проверка без гарантии отсутствия внешнего writer и без RPO/RTO. Teardown
+подтверждён: 24 контейнера, 5 сетей и 7 томов удалены, другие проекты не затронуты.
 
 ## Решения владельца (действующие)
 
@@ -109,27 +124,26 @@ The current policy-file inventory is **524 dispositions / 242 baseline identitie
   форм с `data-csrf="header"`, 10055-6 — принятый риск low, 10055-4 — исправление (2026-11-21). Любое
   другое исключение — только с согласия владельца.
 - Демо-изображения хранятся в репозитории (2026-11-21).
-- Новые PR облачного агента интегрируются пачкой, без экспериментов с новыми workflow.
-- Dependabot npm принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
-  привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят: его чанк весит 289,41 KiB, и
-  ADR-049 поднят до 290 KiB для этой версии (2026-11-22). jsdom 31 принят: проверки inline-стилей
-  читают объявление через `expectInlineStyle`, а не вычисленный стиль, который теперь раскрывает
-  `var()`. Удерживается @lhci/cli 0.15.1: 0.16.1 тянет пакет `sentry` с лицензией
-  FSL-1.1-Apache-2.0, которой нет в `allow-licenses` в `.github/dependency-review-config.yml`.
+- Dependabot принимается коммитом владельца; мажорные обновления разрешены (2026-11-22). Манифесты
+  привязаны проекцией D1–D4 (ADR-047). maplibre-gl 6.18.0 принят (ADR-049 — 290 KiB). jsdom 31 принят.
+  `@lhci/cli` держится на 0.15.1: 0.16 тянет `sentry` под FSL-1.1-Apache-2.0; Dependabot его игнорирует
+  (2026-11-24).
 - Мутационные линии вне объёма MVP (2026-11-13).
 - Для frozen RC использовать smoke на X и release с Y после проверки ancestry и единственной
-  разницы `quality/frozen-rc.json`. Нужны успешный доверенный full-smoke receipt для X и
-  собственные обязательные проверки для Y.
-- Для R83 обязательны базовые mocked-сценарии Messenger в desktop Firefox и WebKit. Физический
-  Safari проверяется отдельно. PR Owned Live остаётся advisory, Chromatic выключен.
-- Независимое review auth, сессий и данных провести на финальном кандидате до freeze. Риск
-  шифртекста reset-ссылок в JetStream допускается для синтетического демо после подтверждения
-  изоляции Compose и отсутствия реальных данных. Записать условия и ограничения в release notes.
+  разницы `quality/frozen-rc.json`.
+- Для R83 обязательны mocked-сценарии Messenger в desktop Firefox и WebKit. Физический Safari проверяется
+  отдельно. PR Owned Live остаётся advisory, Chromatic выключен.
+- Независимое review auth, сессий и данных — на финальном кандидате до freeze. Риск шифртекста
+  reset-ссылок в JetStream допускается для синтетического демо; условия — в release notes.
+- Email участников чата скрыт; блокировка входа по email принята для MVP (ADR-056); CSRF привязывается
+  к сессии (2026-11-23).
+- OpenSSL 3.5.9-r1 в Caddy принят досрочно; fence статистики не поддерживает NATS KV (2026-11-24).
 
 ## Следующие шаги
 
-1. Исправить serious-находки визуального аудита и разобраться с flaky desktop footer.
-2. На следующем стабильном SHA `main` запустить два последовательных зелёных полных Core с интервалом фактических стартов не менее двух часов. Во время серии ничего не сливать в `main`.
-3. Разобрать нестабильную доставку Web Push.
-4. Повторить пакет скриншотов и выполнить restore на том же локальном стенде.
-5. Сохранять scoped DAST-доказательства для AUD-381.
+1. Довести [#1578](https://github.com/egorribun/university_ecosystem/pull/1578) до зелёных required checks
+   и обычного merge.
+2. На новом `main` запустить два последовательных полных Core с интервалом не менее двух часов.
+3. Привязка CSRF к сессии (черновик в stash), затем новый визуальный пакет и restore на одном стенде.
+4. Разобраться с Web Push 410 и доставкой R23; проверить учёт skipped.
+5. Приёмка строк этапа 3 на подписанном стенде после закрытия AUD-154.

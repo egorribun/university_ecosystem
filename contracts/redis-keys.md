@@ -219,7 +219,7 @@ not a Redis key: it is stored in PostgreSQL as `mfa_challenges.client_fingerprin
 
 | Key Pattern | TTL | Owner (write) | Readers | Purpose |
 |-------------|-----|---------------|---------|---------|
-| `stats:{kind}:{user_id}:{period_key}` | Configured `stats_cache_ttl_seconds` (default 180s; `set_cached_stats` accepts a per-call override) | Python `app/services/stats_cache.py` | Python analytics service (`app/services/user/analytics_service.py`), CQRS query (`app/cqrs/queries.py`), cache warmup (`app/services/cache_warmup.py`) | Per-user attendance, grade, or participation statistics by normalized period |
+| `stats:{kind}:{user_id}:{period_key}` | Configured `stats_cache_ttl_seconds` (default 180s); a fill reservation marker lives at most 30s | Python `app/services/stats_fill_fence.py` (reserve-then-complete; Redis, Tiered L2 and Memory only, never NATS KV) | Python analytics service (`app/services/user/analytics_service.py`), CQRS query (`app/cqrs/queries.py`), cache warmup (`app/services/cache_warmup.py`) | Per-user attendance, grade, or participation statistics by normalized period |
 
 ---
 

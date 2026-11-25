@@ -1582,7 +1582,7 @@
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
-        "FromDishka[AuthService]",
+        "FromDishka[UserProfileService]",
         "inject"
       ],
       "id": "app.api.users:me:GET:/me",

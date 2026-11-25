@@ -2106,6 +2106,14 @@ def _bind_stand_owner_compose_resources(
         if not hmac.compare_digest(
             resume_evidence.fingerprint,
             current.resume_compose_resource_fingerprint,
+        ) or (
+            current.schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
+            and current.stack == LIVE_STACK_CORE
+            and current.resume_compose_resource_schema_version
+            == IN_PLACE_OWNER_SCHEMA_VERSION
+            and not hmac.compare_digest(
+                evidence.fingerprint, resume_evidence.fingerprint
+            )
         ):
             raise StandError(
                 "resolved Compose resource identity differs from signed resume evidence"
@@ -4980,7 +4988,32 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     active_port_services = (
         LIVE_CORE_EXPECTED_SERVICES if stack == LIVE_STACK_CORE else None
     )
-    if active_port_services is None:
+    reuse_in_place_owner: StandOwner | None = None
+    resume_in_place_owner: StandOwner | None = None
+    if (
+        IN_PLACE_MODE
+        and stack == LIVE_STACK_CORE
+        and existing_owner is not None
+        and existing_owner.schema_version == IN_PLACE_OWNER_SCHEMA_VERSION
+    ):
+        if existing_owner.compose_resource_fingerprint is not None:
+            reuse_in_place_owner = existing_owner
+        elif (
+            existing_owner.resume_compose_resource_fingerprint is not None
+            and existing_owner.resume_compose_resource_schema_version
+            == IN_PLACE_OWNER_SCHEMA_VERSION
+        ):
+            resume_in_place_owner = existing_owner
+    if reuse_in_place_owner is not None:
+        # Active Core data stores may still occupy these signed ports. Verify
+        # ownership and stop the owned project before probing them below.
+        published_ports = dict(reuse_in_place_owner.published_ports)
+    elif resume_in_place_owner is not None:
+        # An incomplete marker cannot authorize a stop. Its signed ports must
+        # be free before preparing the resumable owner or changing its marker.
+        published_ports = dict(resume_in_place_owner.published_ports)
+        require_free_ports(published_ports, active_services=active_port_services)
+    elif active_port_services is None:
         published_ports = choose_published_ports()
         require_free_ports(published_ports)
     else:
@@ -5014,9 +5047,13 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         if should_stop_before_binding:
             # Only current evidence covers containers and networks as well as
             # volumes. Older signed markers are rebound before the old project
-            # is stopped; an incomplete reservation cannot authorize reuse.
+            # is stopped; an incomplete reservation cannot authorize a stop.
             _verify_stand_owner_compose_resources(WORKTREE, existing_owner)
             _require_owned_docker_daemon(existing_owner)
+            if reuse_in_place_owner is not None:
+                _assert_in_place_source_current(reuse_in_place_owner)
+                if load_stand_owner(WORKTREE) != reuse_in_place_owner:
+                    raise StandError("live stand ownership changed before stop")
             stop_services = (
                 existing_owner.selected_services
                 if existing_owner.stack == LIVE_STACK_CORE
@@ -5052,7 +5089,24 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         # refresh to the exact checkout verified for the current up invocation.
         SOURCE_SHA = worktree_sha
     _assert_stand_paths_safe(WORKTREE)
-    if not (WORKTREE / STAND_FILE).is_file():
+    if reuse_in_place_owner is not None:
+        # Do not invalidate or rewrite the signed marker if an old port was
+        # claimed while the owned project was stopping.
+        _assert_in_place_source_current(reuse_in_place_owner)
+        _require_owned_docker_daemon(reuse_in_place_owner)
+        _verify_stand_owner_compose_resources(WORKTREE, reuse_in_place_owner)
+        _require_owned_docker_daemon(reuse_in_place_owner)
+        _assert_in_place_source_current(reuse_in_place_owner)
+        require_free_ports(published_ports, active_services=active_port_services)
+    if resume_in_place_owner is not None:
+        _assert_in_place_source_current(resume_in_place_owner)
+        _require_owned_docker_daemon(resume_in_place_owner)
+        if load_stand_owner(WORKTREE) != resume_in_place_owner:
+            raise StandError("live stand ownership changed before resume")
+        owner = resume_in_place_owner
+    elif not (WORKTREE / STAND_FILE).is_file():
+        if reuse_in_place_owner is not None:
+            raise StandError("stand ownership metadata disappeared during startup")
         owner = create_stand_owner(
             WORKTREE, published_ports=published_ports, stack=stack
         )
@@ -5061,12 +5115,13 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
             raise StandError("stand ownership metadata appeared during startup")
         owner = update_stand_owner_ports(WORKTREE, existing_owner, published_ports)
     # Catch ports claimed while the old project stopped or the worktree moved.
-    # On failure the old stand data remains intact and no new build is started.
-    owner_ports = dict(owner.published_ports)
-    if active_port_services is None:
-        require_free_ports(owner_ports)
-    else:
-        require_free_ports(owner_ports, active_services=active_port_services)
+    # Reused in-place ports were checked immediately before the owner update.
+    if reuse_in_place_owner is None and resume_in_place_owner is None:
+        owner_ports = dict(owner.published_ports)
+        if active_port_services is None:
+            require_free_ports(owner_ports)
+        else:
+            require_free_ports(owner_ports, active_services=active_port_services)
     env = stand_environment(
         load_or_create_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
@@ -5097,6 +5152,14 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         cwd=WORKTREE,
         env=env,
     )
+    if resume_in_place_owner is not None:
+        # Preparation can take time; reject a claimed port before binding the
+        # incomplete marker, and verify source and daemon again.
+        _assert_in_place_source_current(resume_in_place_owner)
+        _require_owned_docker_daemon(resume_in_place_owner)
+        if load_stand_owner(WORKTREE) != resume_in_place_owner:
+            raise StandError("live stand ownership changed during resume")
+        require_free_ports(published_ports, active_services=active_port_services)
     owner = _bind_stand_owner_compose_resources(
         WORKTREE,
         owner,
@@ -5131,9 +5194,15 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
             allow_existing_owned_volumes=allow_existing_owned_volumes,
         )
         _require_owned_docker_daemon(owner)
+        if reuse_in_place_owner is not None or resume_in_place_owner is not None:
+            _assert_in_place_source_current(owner)
     except StandError:
         _invalidate_stand_owner_compose_resources(WORKTREE, owner)
         raise
+    if reuse_in_place_owner is not None or resume_in_place_owner is not None:
+        require_free_ports(
+            dict(owner.published_ports), active_services=active_port_services
+        )
     start_command = [
         powershell,
         "-NoProfile",

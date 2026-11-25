@@ -16,8 +16,7 @@ logger = get_logger(__name__)
 
 class RedisSessionData(TypedDict):
     user_id: str
-    # RZ-3: session_id cached alongside user_id so the auth hot-path (cache-hit)
-    # can load ActiveSession via O(1) pk lookup instead of an extra WHERE-jti query.
+    # Retained as cache metadata; authorization binds the authenticated user and JTI.
     session_id: str | None
     fingerprint_hash: str | None
     mfa_verified_at: str | None  # ISO format
@@ -60,8 +59,7 @@ class RedisSessionService:
 
         data = {
             "user_id": str(user_id),
-            # RZ-3: Store session_id so deps.py cache-hit path avoids a second
-            # DB round-trip (WHERE jti = ...) on every authenticated request.
+            # Keep the session ID as cache metadata, not as authorization.
             "session_id": str(session_id) if session_id else "",
             "fingerprint_hash": fingerprint.fingerprint_hash if fingerprint else "",
             "mfa_verified_at": mfa_verified_at.isoformat() if mfa_verified_at else "",

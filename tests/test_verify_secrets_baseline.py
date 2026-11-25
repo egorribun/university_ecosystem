@@ -38470,7 +38470,365 @@ _FOOTER_CONSOLE_INSERTIONS = (
 )
 
 
+# Preserve the existing approval while rebinding the Core in-place lifecycle
+# source. Each projection restores exact predecessor bytes before older layers.
+_LIFECYCLE_LIVE = _FOOTER_CONSOLE_LIVE
+_LIFECYCLE_LEDGER = _FOOTER_CONSOLE_LEDGER
+_LIFECYCLE_ROW = _FOOTER_CONSOLE_ROW
+_LIFECYCLE_PINS = {
+    _LIFECYCLE_LIVE: (
+        _FOOTER_CONSOLE_PINS[_LIFECYCLE_LIVE][1],
+        bytes.fromhex(
+            "6a c8 64 45 44 d1 69 23 9f 24 32 32 88 d7 aa 0d"
+            " c7 11 05 5b aa 9d 89 ca b5 34 27 e8 05 61 46 9d"
+        ),
+    ),
+    _LIFECYCLE_LEDGER: (
+        _FOOTER_CONSOLE_PINS[_LIFECYCLE_LEDGER][1],
+        bytes.fromhex(
+            "9b ee 48 3c 86 6a 4d 39 ca 8c 8a ad 43 c8 af 99"
+            " ff 17 0a 18 c8 7d 08 2b 4d 23 53 c7 c0 26 4e 1c"
+        ),
+    ),
+}
+_LIFECYCLE_ROW_AFTER = bytes.fromhex(
+    "7f bc 80 ec c7 77 4a 1e a9 9e 48 dd ab 14 e9 08"
+    " 2d 51 05 e6 9c 95 8a 62 d3 30 17 1b 39 90 31 9b"
+)
+_LIFECYCLE_POLICY_BEFORE = bytes.fromhex(
+    "ff 49 4e 1c 1c dc 5f 27 b3 7c 53 6e 0b f2 c0 59"
+    " 6b 6c 5b 65 9c 14 9c 53 a9 19 25 08 79 e1 16 b0"
+)
+_LIFECYCLE_REVERSALS = (
+    (
+        b"        if not hmac.compare_digest(\n"
+        b"            resume_evidence.fingerprint,\n"
+        b"            current.resume_compose_resource_fingerprint,\n"
+        b"        ) or (\n"
+        b"            current.schema_version == IN_PLACE_OWNER_SCHEMA_"
+        b"VERSION\n"
+        b"            and current.stack == LIVE_STACK_CORE\n"
+        b"            and current.resume_compose_resource_schema_versi"
+        b"on\n"
+        b"            == IN_PLACE_OWNER_SCHEMA_VERSION\n"
+        b"            and not hmac.compare_digest(\n"
+        b"                evidence.fingerprint, resume_evidence.finger"
+        b"print\n"
+        b"            )\n"
+        b"        ):\n"
+        b"            raise StandError(\n"
+        b'                "resolved Compose resource identity differs '
+        b'from signed resume evidence"\n',
+        b"        if not hmac.compare_digest(\n"
+        b"            resume_evidence.fingerprint,\n"
+        b"            current.resume_compose_resource_fingerprint,\n"
+        b"        ):\n"
+        b"            raise StandError(\n"
+        b'                "resolved Compose resource identity differs '
+        b'from signed resume evidence"\n',
+    ),
+    (
+        b"    active_port_services = (\n"
+        b"        LIVE_CORE_EXPECTED_SERVICES if stack == LIVE_STACK_C"
+        b"ORE else None\n"
+        b"    )\n"
+        b"    reuse_in_place_owner: StandOwner | None = None\n"
+        b"    resume_in_place_owner: StandOwner | None = None\n"
+        b"    if (\n"
+        b"        IN_PLACE_MODE\n"
+        b"        and stack == LIVE_STACK_CORE\n"
+        b"        and existing_owner is not None\n"
+        b"        and existing_owner.schema_version == IN_PLACE_OWNER_"
+        b"SCHEMA_VERSION\n"
+        b"    ):\n"
+        b"        if existing_owner.compose_resource_fingerprint is no"
+        b"t None:\n"
+        b"            reuse_in_place_owner = existing_owner\n"
+        b"        elif (\n"
+        b"            existing_owner.resume_compose_resource_fingerpri"
+        b"nt is not None\n"
+        b"            and existing_owner.resume_compose_resource_schem"
+        b"a_version\n"
+        b"            == IN_PLACE_OWNER_SCHEMA_VERSION\n"
+        b"        ):\n"
+        b"            resume_in_place_owner = existing_owner\n"
+        b"    if reuse_in_place_owner is not None:\n"
+        b"        # Active Core data stores may still occupy these sig"
+        b"ned ports. Verify\n"
+        b"        # ownership and stop the owned project before probin"
+        b"g them below.\n"
+        b"        published_ports = dict(reuse_in_place_owner.publishe"
+        b"d_ports)\n"
+        b"    elif resume_in_place_owner is not None:\n"
+        b"        # An incomplete marker cannot authorize a stop. Its "
+        b"signed ports must\n"
+        b"        # be free before preparing the resumable owner or ch"
+        b"anging its marker.\n"
+        b"        published_ports = dict(resume_in_place_owner.publish"
+        b"ed_ports)\n"
+        b"        require_free_ports(published_ports, active_services="
+        b"active_port_services)\n"
+        b"    elif active_port_services is None:\n"
+        b"        published_ports = choose_published_ports()\n"
+        b"        require_free_ports(published_ports)\n"
+        b"    else:\n",
+        b"    active_port_services = (\n"
+        b"        LIVE_CORE_EXPECTED_SERVICES if stack == LIVE_STACK_C"
+        b"ORE else None\n"
+        b"    )\n"
+        b"    if active_port_services is None:\n"
+        b"        published_ports = choose_published_ports()\n"
+        b"        require_free_ports(published_ports)\n"
+        b"    else:\n",
+    ),
+    (
+        b"        if should_stop_before_binding:\n"
+        b"            # Only current evidence covers containers and ne"
+        b"tworks as well as\n"
+        b"            # volumes. Older signed markers are rebound befo"
+        b"re the old project\n"
+        b"            # is stopped; an incomplete reservation cannot a"
+        b"uthorize a stop.\n"
+        b"            _verify_stand_owner_compose_resources(WORKTREE, "
+        b"existing_owner)\n"
+        b"            _require_owned_docker_daemon(existing_owner)\n"
+        b"            if reuse_in_place_owner is not None:\n"
+        b"                _assert_in_place_source_current(reuse_in_pla"
+        b"ce_owner)\n"
+        b"                if load_stand_owner(WORKTREE) != reuse_in_pl"
+        b"ace_owner:\n"
+        b'                    raise StandError("live stand ownership c'
+        b'hanged before stop")\n'
+        b"            stop_services = (\n"
+        b"                existing_owner.selected_services\n"
+        b"                if existing_owner.stack == LIVE_STACK_CORE\n",
+        b"        if should_stop_before_binding:\n"
+        b"            # Only current evidence covers containers and ne"
+        b"tworks as well as\n"
+        b"            # volumes. Older signed markers are rebound befo"
+        b"re the old project\n"
+        b"            # is stopped; an incomplete reservation cannot a"
+        b"uthorize reuse.\n"
+        b"            _verify_stand_owner_compose_resources(WORKTREE, "
+        b"existing_owner)\n"
+        b"            _require_owned_docker_daemon(existing_owner)\n"
+        b"            stop_services = (\n"
+        b"                existing_owner.selected_services\n"
+        b"                if existing_owner.stack == LIVE_STACK_CORE\n",
+    ),
+    (
+        b"        # refresh to the exact checkout verified for the cur"
+        b"rent up invocation.\n"
+        b"        SOURCE_SHA = worktree_sha\n"
+        b"    _assert_stand_paths_safe(WORKTREE)\n"
+        b"    if reuse_in_place_owner is not None:\n"
+        b"        # Do not invalidate or rewrite the signed marker if "
+        b"an old port was\n"
+        b"        # claimed while the owned project was stopping.\n"
+        b"        _assert_in_place_source_current(reuse_in_place_owner"
+        b")\n"
+        b"        _require_owned_docker_daemon(reuse_in_place_owner)\n"
+        b"        _verify_stand_owner_compose_resources(WORKTREE, reus"
+        b"e_in_place_owner)\n"
+        b"        _require_owned_docker_daemon(reuse_in_place_owner)\n"
+        b"        _assert_in_place_source_current(reuse_in_place_owner"
+        b")\n"
+        b"        require_free_ports(published_ports, active_services="
+        b"active_port_services)\n"
+        b"    if resume_in_place_owner is not None:\n"
+        b"        _assert_in_place_source_current(resume_in_place_owne"
+        b"r)\n"
+        b"        _require_owned_docker_daemon(resume_in_place_owner)\n"
+        b"        if load_stand_owner(WORKTREE) != resume_in_place_own"
+        b"er:\n"
+        b'            raise StandError("live stand ownership changed b'
+        b'efore resume")\n'
+        b"        owner = resume_in_place_owner\n"
+        b"    elif not (WORKTREE / STAND_FILE).is_file():\n"
+        b"        if reuse_in_place_owner is not None:\n"
+        b'            raise StandError("stand ownership metadata disap'
+        b'peared during startup")\n'
+        b"        owner = create_stand_owner(\n"
+        b"            WORKTREE, published_ports=published_ports, stack"
+        b"=stack\n"
+        b"        )\n",
+        b"        # refresh to the exact checkout verified for the cur"
+        b"rent up invocation.\n"
+        b"        SOURCE_SHA = worktree_sha\n"
+        b"    _assert_stand_paths_safe(WORKTREE)\n"
+        b"    if not (WORKTREE / STAND_FILE).is_file():\n"
+        b"        owner = create_stand_owner(\n"
+        b"            WORKTREE, published_ports=published_ports, stack"
+        b"=stack\n"
+        b"        )\n",
+    ),
+    (
+        b'            raise StandError("stand ownership metadata appea'
+        b'red during startup")\n'
+        b"        owner = update_stand_owner_ports(WORKTREE, existing_"
+        b"owner, published_ports)\n"
+        b"    # Catch ports claimed while the old project stopped or t"
+        b"he worktree moved.\n"
+        b"    # Reused in-place ports were checked immediately before "
+        b"the owner update.\n"
+        b"    if reuse_in_place_owner is None and resume_in_place_owne"
+        b"r is None:\n"
+        b"        owner_ports = dict(owner.published_ports)\n"
+        b"        if active_port_services is None:\n"
+        b"            require_free_ports(owner_ports)\n"
+        b"        else:\n"
+        b"            require_free_ports(owner_ports, active_services="
+        b"active_port_services)\n"
+        b"    env = stand_environment(\n"
+        b"        load_or_create_vapid(WORKTREE), owner.project_name, "
+        b"dict(owner.published_ports)\n"
+        b"    )\n",
+        b'            raise StandError("stand ownership metadata appea'
+        b'red during startup")\n'
+        b"        owner = update_stand_owner_ports(WORKTREE, existing_"
+        b"owner, published_ports)\n"
+        b"    # Catch ports claimed while the old project stopped or t"
+        b"he worktree moved.\n"
+        b"    # On failure the old stand data remains intact and no ne"
+        b"w build is started.\n"
+        b"    owner_ports = dict(owner.published_ports)\n"
+        b"    if active_port_services is None:\n"
+        b"        require_free_ports(owner_ports)\n"
+        b"    else:\n"
+        b"        require_free_ports(owner_ports, active_services=acti"
+        b"ve_port_services)\n"
+        b"    env = stand_environment(\n"
+        b"        load_or_create_vapid(WORKTREE), owner.project_name, "
+        b"dict(owner.published_ports)\n"
+        b"    )\n",
+    ),
+    (
+        b"        cwd=WORKTREE,\n"
+        b"        env=env,\n"
+        b"    )\n"
+        b"    if resume_in_place_owner is not None:\n"
+        b"        # Preparation can take time; reject a claimed port b"
+        b"efore binding the\n"
+        b"        # incomplete marker, and verify source and daemon ag"
+        b"ain.\n"
+        b"        _assert_in_place_source_current(resume_in_place_owne"
+        b"r)\n"
+        b"        _require_owned_docker_daemon(resume_in_place_owner)\n"
+        b"        if load_stand_owner(WORKTREE) != resume_in_place_own"
+        b"er:\n"
+        b'            raise StandError("live stand ownership changed d'
+        b'uring resume")\n'
+        b"        require_free_ports(published_ports, active_services="
+        b"active_port_services)\n"
+        b"    owner = _bind_stand_owner_compose_resources(\n"
+        b"        WORKTREE,\n"
+        b"        owner,\n",
+        b"        cwd=WORKTREE,\n"
+        b"        env=env,\n"
+        b"    )\n"
+        b"    owner = _bind_stand_owner_compose_resources(\n"
+        b"        WORKTREE,\n"
+        b"        owner,\n",
+    ),
+    (
+        b"            allow_existing_owned_volumes=allow_existing_owne"
+        b"d_volumes,\n"
+        b"        )\n"
+        b"        _require_owned_docker_daemon(owner)\n"
+        b"        if reuse_in_place_owner is not None or resume_in_pla"
+        b"ce_owner is not None:\n"
+        b"            _assert_in_place_source_current(owner)\n"
+        b"    except StandError:\n"
+        b"        _invalidate_stand_owner_compose_resources(WORKTREE, "
+        b"owner)\n"
+        b"        raise\n"
+        b"    if reuse_in_place_owner is not None or resume_in_place_o"
+        b"wner is not None:\n"
+        b"        require_free_ports(\n"
+        b"            dict(owner.published_ports), active_services=act"
+        b"ive_port_services\n"
+        b"        )\n"
+        b"    start_command = [\n"
+        b"        powershell,\n"
+        b'        "-NoProfile",\n',
+        b"            allow_existing_owned_volumes=allow_existing_owne"
+        b"d_volumes,\n"
+        b"        )\n"
+        b"        _require_owned_docker_daemon(owner)\n"
+        b"    except StandError:\n"
+        b"        _invalidate_stand_owner_compose_resources(WORKTREE, "
+        b"owner)\n"
+        b"        raise\n"
+        b"    start_command = [\n"
+        b"        powershell,\n"
+        b'        "-NoProfile",\n',
+    ),
+)
+
+
+def _lifecycle_source_predecessor(path: str, actual: bytes) -> bytes:
+    pins = _LIFECYCLE_PINS.get(path)
+    if pins is None:
+        return actual
+    previous, current = pins
+    digest = hashlib.sha256(actual).digest()
+    if digest == previous:
+        return actual
+    message = f"conditional disposition source file SHA-256 changed: {path}"
+    assert digest == current, message
+    if path == _LIFECYCLE_LEDGER:
+        old_live, new_live = _LIFECYCLE_PINS[_LIFECYCLE_LIVE]
+        reversals = ((new_live.hex().encode("ascii"), old_live.hex().encode("ascii")),)
+    else:
+        reversals = _LIFECYCLE_REVERSALS
+    restored = actual
+    for current_fragment, predecessor_fragment in reversals:
+        assert restored.count(current_fragment) == 1, message
+        restored = restored.replace(current_fragment, predecessor_fragment, 1)
+    assert hashlib.sha256(restored).digest() == previous, message
+    return restored
+
+
+def _lifecycle_source_if_current(path: str, actual: bytes) -> bytes:
+    pins = _LIFECYCLE_PINS.get(path)
+    if pins is not None and hashlib.sha256(actual).digest() == pins[1]:
+        return _lifecycle_source_predecessor(path, actual)
+    return actual
+
+
+def _lifecycle_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
+    restored = copy.deepcopy(policy)
+    records = restored["records"]
+    if len(records) <= _LIFECYCLE_ROW:
+        return restored
+    row = records[_LIFECYCLE_ROW]
+    identity = row["identity"]
+    previous, current = _LIFECYCLE_PINS[_LIFECYCLE_LIVE]
+    if identity["hashed_secret_bytes"] != _nov15_identity(current.hex()):
+        # Historical layers validate any earlier or unrecognized identity.
+        return restored
+    assert len(records) == 524, "lifecycle disposition count changed"
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _LIFECYCLE_ROW_AFTER, (
+        "lifecycle disposition approval metadata changed"
+    )
+    assert identity["path"] == _LIFECYCLE_LEDGER
+    assert identity["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    identity["hashed_secret_bytes"] = _nov15_identity(previous.hex())
+    canonical = json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _FOOTER_CONSOLE_ROW_AFTER, (
+        "lifecycle predecessor approval metadata changed"
+    )
+    return restored
+
+
 def _footer_console_source_predecessor(path: str, actual: bytes) -> bytes:
+    actual = _lifecycle_source_if_current(path, actual)
     pins = _FOOTER_CONSOLE_PINS.get(path)
     if pins is None:
         return actual
@@ -38498,6 +38856,7 @@ def _footer_console_source_predecessor(path: str, actual: bytes) -> bytes:
 
 
 def _footer_console_source_if_current(path: str, actual: bytes) -> bytes:
+    actual = _lifecycle_source_if_current(path, actual)
     pins = _FOOTER_CONSOLE_PINS.get(path)
     if pins is not None and hashlib.sha256(actual).digest() == pins[1]:
         return _footer_console_source_predecessor(path, actual)
@@ -38505,7 +38864,7 @@ def _footer_console_source_if_current(path: str, actual: bytes) -> bytes:
 
 
 def _footer_console_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]:
-    restored = copy.deepcopy(policy)
+    restored = _lifecycle_policy_predecessor(policy)
     records = restored["records"]
     if len(records) <= _FOOTER_CONSOLE_ROW:
         return restored
@@ -38537,7 +38896,7 @@ def _footer_console_policy_predecessor(policy: dict[str, Any]) -> dict[str, Any]
 def test_footer_console_source_projection_reconstructs_predecessor() -> None:
     root = Path(__file__).resolve().parents[1]
     for path, (previous, current) in _FOOTER_CONSOLE_PINS.items():
-        actual = (root / path).read_bytes()
+        actual = _lifecycle_source_predecessor(path, (root / path).read_bytes())
         assert hashlib.sha256(actual).digest() == current
         restored = _footer_console_source_predecessor(path, actual)
         assert hashlib.sha256(restored).digest() == previous
@@ -38546,13 +38905,22 @@ def test_footer_console_source_projection_reconstructs_predecessor() -> None:
 
 def test_footer_console_policy_rebind_changes_one_identity() -> None:
     root = Path(__file__).resolve().parents[1]
-    ledger = json.loads((root / _FOOTER_CONSOLE_LEDGER).read_bytes())
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    ledger = json.loads(
+        _lifecycle_source_predecessor(
+            _FOOTER_CONSOLE_LEDGER, (root / _FOOTER_CONSOLE_LEDGER).read_bytes()
+        )
+    )
+    policy = _lifecycle_policy_predecessor(
+        json.loads(
+            (root / "quality/security-false-positive-dispositions.json").read_bytes()
+        )
     )
     assert len(ledger["dispositions"]) == 15
     assert len(policy["records"]) == 524
-    live_pin = hashlib.sha256((root / _FOOTER_CONSOLE_LIVE).read_bytes()).hexdigest()
+    live = _lifecycle_source_predecessor(
+        _FOOTER_CONSOLE_LIVE, (root / _FOOTER_CONSOLE_LIVE).read_bytes()
+    )
+    live_pin = hashlib.sha256(live).hexdigest()
     assert [
         item["sha256"]
         for item in ledger["dispositions"][6]["companions"]
@@ -38588,7 +38956,9 @@ def test_footer_console_projection_rejects_spoofed_source(
     mutation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    actual = _lifecycle_source_predecessor(
+        path, (Path(__file__).resolve().parents[1] / path).read_bytes()
+    )
     fragment = (
         _FOOTER_CONSOLE_INSERTIONS[fragment_index]
         if fragment_index is not None
@@ -40437,3 +40807,135 @@ def test_rustsec_2026_ledger_rejects_spoofed_digest(
     )
     with pytest.raises(AssertionError, match="conditional disposition source"):
         _rustsec_2026_source_predecessor(_RUSTSEC_2026_LEDGER, changed)
+
+
+def test_lifecycle_rebind_restores_exact_source_and_ledger_predecessors() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for path, (previous, current) in _LIFECYCLE_PINS.items():
+        actual = (root / path).read_bytes()
+        assert hashlib.sha256(actual).digest() == current
+        restored = _lifecycle_source_predecessor(path, actual)
+        assert hashlib.sha256(restored).digest() == previous
+        assert _lifecycle_source_predecessor(path, restored) == restored
+    ledger_bytes = (root / _LIFECYCLE_LEDGER).read_bytes()
+    ledger = json.loads(ledger_bytes)
+    previous_ledger = json.loads(
+        _lifecycle_source_predecessor(_LIFECYCLE_LEDGER, ledger_bytes)
+    )
+    expected = copy.deepcopy(ledger)
+    companions = expected["dispositions"][6]["companions"]
+    live = [item for item in companions if item["path"] == _LIFECYCLE_LIVE]
+    assert len(ledger["dispositions"]) == 15
+    assert live == [
+        {"path": _LIFECYCLE_LIVE, "sha256": _LIFECYCLE_PINS[_LIFECYCLE_LIVE][1].hex()}
+    ]
+    live[0]["sha256"] = _LIFECYCLE_PINS[_LIFECYCLE_LIVE][0].hex()
+    assert expected == previous_ledger
+    assert _lifecycle_source_predecessor("unrelated", b"unchanged") == b"unchanged"
+
+
+def test_lifecycle_policy_rebind_changes_only_one_existing_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    restored = _lifecycle_policy_predecessor(policy)
+    assert len(policy["records"]) == 524
+    assert [
+        index
+        for index, (now, old) in enumerate(
+            zip(policy["records"], restored["records"], strict=True)
+        )
+        if now != old
+    ] == [_LIFECYCLE_ROW]
+    expected = copy.deepcopy(restored["records"][_LIFECYCLE_ROW])
+    expected["identity"]["hashed_secret_bytes"] = _nov15_identity(
+        _LIFECYCLE_PINS[_LIFECYCLE_LIVE][1].hex()
+    )
+    assert expected == policy["records"][_LIFECYCLE_ROW]
+    canonical = json.dumps(
+        restored, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(canonical).digest() == _LIFECYCLE_POLICY_BEFORE
+    assert _lifecycle_policy_predecessor(restored) == restored
+    _aud154_historical_policy(policy)
+
+
+@pytest.mark.parametrize("fragment_index", range(len(_LIFECYCLE_REVERSALS) + 1))
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "changed"])
+def test_lifecycle_projection_rejects_spoofed_source_and_token_drift(
+    fragment_index: int, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = (
+        _LIFECYCLE_LIVE
+        if fragment_index < len(_LIFECYCLE_REVERSALS)
+        else _LIFECYCLE_LEDGER
+    )
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    fragment = (
+        _LIFECYCLE_REVERSALS[fragment_index][0]
+        if path == _LIFECYCLE_LIVE
+        else _LIFECYCLE_PINS[_LIFECYCLE_LIVE][1].hex().encode("ascii")
+    )
+    assert actual.count(fragment) == 1
+    replacement = b"" if mutation == "missing" else fragment + fragment
+    if mutation == "changed":
+        replacement = fragment[:-1] + b"!"
+    changed = actual.replace(fragment, replacement, 1)
+    previous, _ = _LIFECYCLE_PINS[path]
+    monkeypatch.setitem(
+        _LIFECYCLE_PINS, path, (previous, hashlib.sha256(changed).digest())
+    )
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _lifecycle_source_predecessor(path, changed)
+
+
+@pytest.mark.parametrize("path", [_LIFECYCLE_LIVE, _LIFECYCLE_LEDGER])
+def test_lifecycle_projection_rejects_unrecognized_source(path: str) -> None:
+    actual = (Path(__file__).resolve().parents[1] / path).read_bytes()
+    with pytest.raises(AssertionError, match="conditional disposition source"):
+        _lifecycle_source_predecessor(path, actual + b"\n")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "path",
+        "type",
+        "category",
+        "owner",
+        "expiry",
+        "evidence",
+        "approved",
+        "reviewed",
+        "extra",
+        "other",
+    ],
+)
+def test_lifecycle_policy_chain_rejects_identity_and_approval_drift(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_bytes()
+    )
+    row = policy["records"][_LIFECYCLE_ROW]
+    if mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation in {"path", "type"}:
+        row["identity"][mutation] += " changed"
+    elif mutation in {"category", "owner", "evidence"}:
+        row[mutation] += " changed"
+    elif mutation == "expiry":
+        row["expires_on"] += " changed"
+    elif mutation == "approved":
+        row["approval_status"] = "pending"
+    elif mutation == "reviewed":
+        row["reviewed_on"] += " changed"
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    else:
+        policy["records"][0]["evidence"] += " changed"
+    with pytest.raises(AssertionError):
+        _aud154_historical_policy(policy)

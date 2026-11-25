@@ -144,7 +144,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                     {label}
                   </span>
                   {isTodayCol && (
-                    <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-glow-primary">
+                    <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-inverse-text shadow-glow-primary">
                       <TodayIcon size={9} aria-hidden="true" />
                       {t("schedule:toolbar.today")}
                     </span>
@@ -153,7 +153,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                     <button
                       type="button"
                       aria-label={t("schedule:actions.addLesson", { day: label })}
-                      className="flex h-6 w-6 min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
+                      className="flex h-6 w-6 min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-inverse-text focus-visible:ring-2 focus-visible:ring-brand"
                       onClick={(e) => {
                         e.stopPropagation()
                         setAddDay(day)

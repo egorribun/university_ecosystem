@@ -25,7 +25,9 @@ def test_period_and_key_helpers():
     assert stats_cache.resolve_period_key(" 7D ", 30) == "7d"
     assert stats_cache.resolve_period_key(None, 30) == "30d"
     assert stats_cache.resolve_period_key(None, None) == "default"
-    assert stats_cache._make_cache_key(" Grades ", 7, "") == "stats:grades:7:default"
+    assert (
+        stats_cache.make_stats_cache_key(" Grades ", 7, "") == "stats:grades:7:default"
+    )
 
 
 @pytest.mark.asyncio
@@ -80,46 +82,6 @@ async def test_get_cached_stats_skips_disabled_invalid_and_copies_payload():
     assert result is not None
     assert result.payload == payload
     assert result.payload is not payload
-
-
-@pytest.mark.asyncio
-async def test_set_cached_stats_skips_disabled_and_uses_default_or_override_ttl(
-    monkeypatch,
-):
-    disabled = _cache(enabled=False)
-    assert (
-        await stats_cache.set_cached_stats(
-            cache=disabled,
-            kind="grades",
-            user_id=1,
-            period_key="30d",
-            payload={"value": 1},
-        )
-        is None
-    )
-    monkeypatch.setattr(stats_cache.settings, "stats_cache_ttl_seconds", 42)
-    cache = _cache()
-    cache.set.return_value = CacheEntry("etag", {}, 1.0)
-    result = await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="grades",
-        user_id=1,
-        period_key="30d",
-        payload={"value": 1},
-    )
-    assert result is not None
-    assert cache.set.await_args.kwargs["ttl"] == 42
-
-    await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="grades",
-        user_id=1,
-        period_key="30d",
-        payload={"value": 2},
-        skip_cache=True,
-        ttl=9,
-    )
-    assert cache.set.await_count == 1
 
 
 @pytest.mark.asyncio

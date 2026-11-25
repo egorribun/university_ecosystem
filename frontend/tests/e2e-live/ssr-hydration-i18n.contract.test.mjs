@@ -392,10 +392,19 @@ test("production document suite is collected without skips and rejects preview o
     for (const child of suite.suites ?? []) walk(child, file)
   }
   for (const suite of report.suites) walk(suite, suite.file)
-  assert.equal(collected.length, 7, "the production SSR suite must collect exactly seven tests")
+  assert.equal(collected.length, 12, "the production SSR suite must collect exactly twelve tests")
   assert.deepEqual(
     new Set(collected.map((test) => test.file)),
-    new Set(["ssr-document-render.spec.ts", "ssr-csp-browser-negative.spec.ts"])
+    new Set([
+      "ssr-document-render.spec.ts",
+      "ssr-csp-browser-negative.spec.ts",
+      "ssr-error-recovery.spec.ts",
+    ])
+  )
+  assert.equal(
+    collected.filter((test) => test.file === "ssr-error-recovery.spec.ts").length,
+    5,
+    "the production SSR suite must collect all five error-recovery tests"
   )
   for (const test of collected) {
     assert.equal(test.status, "passed", "every production SSR test must be collected to run")

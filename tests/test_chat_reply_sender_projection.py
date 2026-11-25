@@ -97,7 +97,7 @@ async def _seed(session, factory, names, *, missing=False, tombstone=False):
         reply_ids=[message.id for message in replies],
         original_ids=[message.id for message in originals],
         expected={
-            author.id: (None if missing else name, author.email)
+            author.id: None if missing else name
             for author, name in zip(authors, names, strict=True)
         },
     )
@@ -150,14 +150,14 @@ async def test_reply_sender_uses_current_profile_without_private_fallback(
     target = rows[0].replied_to
     assert target is not None and target.id == seeded.original_ids[0]
     assert target.sender is not None
-    expected_name, expected_email = seeded.expected[target.sender_id]
+    expected_name = seeded.expected[target.sender_id]
     assert (
         target.sender.id,
         target.sender.full_name,
-        target.sender.email,
         target.sender.is_active,
         target.sender.avatar_url,
-    ) == (target.sender_id, expected_name, expected_email, False, None)
+    ) == (target.sender_id, expected_name, False, None)
+    assert "email" not in target.sender.model_dump()
     db_session.expunge_all()
     with _statements(db_session) as serialized:
         preview = ReplyPreview.from_message(target)
@@ -195,13 +195,12 @@ async def test_reply_sender_queries_are_batched_for_distinct_authors(
             assert row.replied_to is not None
             assert (
                 ReplyPreview.from_message(row.replied_to).sender_name
-                == seeded.expected[row.replied_to.sender_id][0]
+                == seeded.expected[row.replied_to.sender_id]
             )
         assert len(batches) == 1
         columns, sender_ids = batches[0]
         assert columns == [
             ("users", "id"),
-            ("users", "email"),
             ("users", "is_active"),
             ("user_profiles", "full_name"),
         ]
@@ -340,10 +339,8 @@ async def test_deferred_sender_identity_map_never_triggers_lazy_io(
     rows = await _read(ChatRepository(db_session), seeded, path, 1)
     target = rows[0].replied_to
     assert target is not None and target.sender is not None
-    assert (target.sender.full_name, target.sender.email) == (
-        "Alice",
-        seeded.expected[target.sender_id][1],
-    )
+    assert target.sender.full_name == "Alice"
+    assert "email" not in target.sender.model_dump()
     if path == "page":
         assert rows[0].sender is None
     else:

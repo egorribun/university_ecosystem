@@ -64,6 +64,8 @@ type MockState = {
 }
 
 type MockApiOptions = {
+  /** Initial language for both localStorage and the SSR cookie. */
+  language?: "ru" | "en"
   serviceWorker?: "disabled" | "preserve"
   /** Start without the SSR auth cookie for public login/MFA flows. */
   authenticated?: boolean
@@ -323,6 +325,7 @@ const encodeCursor = (index: number): string => index.toString()
 
 export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   const authenticated = options.authenticated ?? true
+  const language = options.language ?? "ru"
   const state: MockState = {
     // The fixture seeds both browser tokens and the SSR marker below when
     // `authenticated` is true. Keep the in-memory state in sync from the
@@ -366,7 +369,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   const emulateServiceWorker = requestedPreserveServiceWorker && !preserveServiceWorker
 
   await page.addInitScript(
-    ({ preserveServiceWorker, emulateServiceWorker, authenticated }) => {
+    ({ preserveServiceWorker, emulateServiceWorker, authenticated, language }) => {
       try {
         // Some specs install a richer service-worker double before this
         // fixture (for example push-notification delivery). Keep that double
@@ -413,10 +416,10 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         if (window.name !== "__mock_api_initialized__") {
           window.name = "__mock_api_initialized__"
         }
-        // Force Russian language for every page visit. Authentication is
+        // Keep the selected language stable for every page visit. Authentication is
         // opt-in so public login/MFA tests exercise the real unauthenticated
         // route instead of being redirected by a fixture cookie.
-        window.localStorage.setItem("ue:language", "ru")
+        window.localStorage.setItem("ue:language", language)
         if (authenticated) {
           window.localStorage.setItem("access_token", "mock-token")
           window.localStorage.setItem("refresh_token", "mock-refresh")
@@ -451,7 +454,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         // ignore
       }
     },
-    { preserveServiceWorker, emulateServiceWorker, authenticated }
+    { preserveServiceWorker, emulateServiceWorker, authenticated, language }
   )
 
   // SSR runs before browser init scripts, so mirror the mocked auth state with
@@ -470,7 +473,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     ...(authenticated ? [{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }] : []),
     // Keep the SSR shell and the browser-side LanguageProvider on the same
     // locale so hydration tests exercise real UI behavior without React #418.
-    { name: "ue:language", value: "ru", url: e2eOrigin },
+    { name: "ue:language", value: language, url: e2eOrigin },
   ])
 
   // Keep authenticated mock pages from opening a real socket against the

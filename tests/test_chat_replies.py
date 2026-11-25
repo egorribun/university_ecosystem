@@ -49,9 +49,7 @@ def _message_dto(**overrides: Any) -> MessageDTO:
 
 
 def _participant(full_name: str | None = "Alice") -> ChatParticipantDTO:
-    return ChatParticipantDTO(
-        id=uuid.uuid4(), full_name=full_name, email="a@example.com", is_active=True
-    )
+    return ChatParticipantDTO(id=uuid.uuid4(), full_name=full_name, is_active=True)
 
 
 def _fake_message() -> SimpleNamespace:

@@ -169,7 +169,7 @@ const EventsCardContent = memo(function EventsCardContent({
               className={cn(
                 "rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
                 eventsScope === scope
-                  ? "bg-brand text-[var(--sched-on-accent,#fff)] shadow-sm"
+                  ? "bg-brand text-inverse-text shadow-sm"
                   : "text-text-secondary hover:text-text-primary"
               )}
               onClick={() => setEventsScope(scope)}

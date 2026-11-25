@@ -88,14 +88,18 @@ async def test_cached_pk_requires_matching_authoritative_identity(
         candidate.revoked_at = datetime.now(UTC)
     else:
         candidate = None
-    h.db.get.side_effect = [h.user, candidate]
+    h.cache.get_session.return_value["session_id"] = (
+        str(candidate.id) if candidate else None
+    )
     fallback = h.session
     if authoritative == "revoked":
         fallback.revoked_at = datetime.now(UTC)
     elif authoritative == "missing":
         fallback = None
     result = MagicMock()
-    result.scalars.return_value.first.return_value = fallback
+    result.first.return_value = (
+        (h.user, fallback) if fallback and not fallback.revoked_at else None
+    )
     h.db.execute.return_value = result
 
     if authoritative == "active":
@@ -114,6 +118,7 @@ async def test_cached_pk_requires_matching_authoritative_identity(
         h.security.validate_session_expiry.assert_not_called()
         h.fingerprint.validate_fingerprint.assert_not_awaited()
 
+    h.db.get.assert_not_awaited()
     h.db.execute.assert_awaited_once()
     statement = h.db.execute.await_args.args[0]
     compiled = statement.compile()
@@ -126,12 +131,15 @@ async def test_cached_pk_requires_matching_authoritative_identity(
 @pytest.mark.asyncio
 async def test_matching_cached_pk_keeps_fast_path(monkeypatch):
     h = _harness(monkeypatch)
-    h.db.get.side_effect = [h.user, h.session]
+    result = MagicMock()
+    result.first.return_value = (h.user, h.session)
+    h.db.execute.return_value = result
 
     assert await auth._resolve_current_user(h.request, "token", h.db, h.cache) is h.user
 
     assert h.request.state.active_session is h.session
-    h.db.execute.assert_not_awaited()
+    h.db.get.assert_not_awaited()
+    h.db.execute.assert_awaited_once()
     h.security.validate_session_expiry.assert_called_once_with(h.session)
 
 

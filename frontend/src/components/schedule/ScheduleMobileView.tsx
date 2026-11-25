@@ -193,7 +193,7 @@ export function ScheduleMobileView({
                   tone={isActive ? "primary" : "default"}
                   className={cn(
                     "relative shrink-0 font-semibold transition-all duration-fast hover:scale-105",
-                    isActive ? "text-[var(--sched-on-accent)]" : "sched-badge-matte",
+                    isActive ? "text-inverse-text" : "sched-badge-matte",
                     isToday && !isActive && "ring-1 ring-brand/[calc(var(--opacity-dim)*100%)]"
                   )}
                   onClick={() => scrollToDay(i)}
@@ -212,7 +212,9 @@ export function ScheduleMobileView({
                   <span className="relative z-surface flex items-center gap-0.5">
                     {weekdayShort[i] ?? getDayLabel(day)}
                     {count > 0 && (
-                      <sup className="text-[0.625rem] font-bold opacity-70">{count}</sup>
+                      <sup className={cn("text-[0.625rem] font-bold", !isActive && "opacity-70")}>
+                        {count}
+                      </sup>
                     )}
                   </span>
                 </Badge>

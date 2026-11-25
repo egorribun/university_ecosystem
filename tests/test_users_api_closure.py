@@ -7,7 +7,7 @@ import json
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, sentinel
 from uuid import uuid4
 
 import pytest
@@ -191,25 +191,25 @@ async def test_password_and_profile_adapters() -> None:
 
     user = _user()
     db = AsyncMock()
-    auth.refresh_pending_email = AsyncMock()
-    expected = object()
+    profile = MagicMock(get_pending_email=AsyncMock(return_value=None))
     with (
         patch.object(api, "_enforce_profile_cache_integrity"),
         patch.object(api, "log_data_access", AsyncMock()) as log,
-        _patch_user_out(expected),
+        patch.object(api, "map_user_orm_to_dict", return_value={}),
+        _patch_user_out(sentinel.user_out),
     ):
         result = await call_injected(
             api.me,
             request=request,
             user=user,
-            provides={"AuthService": auth, "AsyncDatabaseSession": db},
+            provides={"UserProfileService": profile, "AsyncDatabaseSession": db},
         )
-    assert result is expected
+    assert result is sentinel.user_out
     log.assert_awaited_once()
 
     service = MagicMock()
     service.update_user_profile = AsyncMock(return_value=user)
-    with _patch_user_out(expected):
+    with _patch_user_out(sentinel.user_out):
         result = await call_injected(
             api.update_me,
             MagicMock(),
@@ -217,7 +217,7 @@ async def test_password_and_profile_adapters() -> None:
             user=user,
             provides={"UserProfileService": service},
         )
-    assert result is expected
+    assert result is sentinel.user_out
 
 
 @pytest.mark.asyncio

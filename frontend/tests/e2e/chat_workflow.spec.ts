@@ -374,3 +374,98 @@ test.describe("Messenger Chat Workflow", () => {
     await expect(chatLog).toBeVisible()
   })
 })
+
+test.describe("Messenger basic mocked smoke", () => {
+  test.use({ serviceWorkers: "block" })
+
+  test("opens a direct conversation and sends a message", async ({ page }, testInfo) => {
+    if (testInfo.project.name === "firefox" || testInfo.project.name === "webkit") {
+      await page.setViewportSize({ width: 1280, height: 720 })
+      expect(await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({
+        width: 1280,
+        height: 720,
+      })
+    }
+    await page.addInitScript(() => {
+      ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+    })
+    const mock = await useMockApi(page, { authenticated: true, language: "ru" })
+    const current = {
+      id: mock.state.profile.id,
+      email: CURRENT_USER.email,
+      full_name: CURRENT_USER.full_name,
+      avatar_url: CURRENT_USER.avatar_url,
+      is_active: CURRENT_USER.is_active,
+    }
+    const other = {
+      id: OTHER_USER.id,
+      email: OTHER_USER.email,
+      full_name: OTHER_USER.full_name,
+      avatar_url: OTHER_USER.avatar_url,
+      is_active: OTHER_USER.is_active,
+    }
+    const chat = { ...DM_CHAT, participants: [current, other] }
+    const initialMessage = { ...INITIAL_MESSAGE, sender: other }
+    const sentText = "R83 mocked message"
+    let sentBodyMatched = false
+
+    await page.route(CHAT_COLLECTION_MATCH, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback()
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [chat], has_more: false, next_cursor: null }),
+      })
+    })
+    await page.route(chatDetailMatch, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...chat, unread_count: 0 }),
+      })
+    )
+    await page.route(chatMessagesMatch, async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [initialMessage], has_more: false, next_cursor: null }),
+        })
+        return
+      }
+      if (route.request().method() !== "POST") return route.fallback()
+      sentBodyMatched = (route.request().postData() ?? "").includes(sentText)
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "msg-uuid-sent",
+          chat_id: CHAT_ID,
+          sender_id: current.id,
+          content: sentText,
+          created_at: new Date().toISOString(),
+          read_status: false,
+          sender: current,
+          reactions: [],
+        }),
+      })
+    })
+    await page.route(chatReadMatch, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"success":"ok"}' })
+    )
+    await page.route(chatTypingMatch, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"success":"ok"}' })
+    )
+
+    await page.goto("/messenger", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await expect(page.getByText("Other User").first()).toBeVisible({ timeout: 10_000 })
+    await page.getByText("Other User").first().click()
+    await expect(page).toHaveURL(new RegExp(`messenger/${CHAT_ID}`), { timeout: 10_000 })
+    const chatLog = page.getByRole("log", { name: /Сообщения чата/i })
+    await expect(chatLog.getByText("Привет! Как дела?")).toBeVisible({ timeout: 10_000 })
+    await page.fill("#chat-message-input", sentText)
+    await page.click("#chat-send-btn")
+    await expect.poll(() => sentBodyMatched).toBe(true)
+    await expect(chatLog.getByText(sentText).first()).toBeVisible({ timeout: 10_000 })
+  })
+})

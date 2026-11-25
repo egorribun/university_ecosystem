@@ -564,15 +564,15 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         if not sender_ids:
             return
         result = await self.db.execute(
-            select(User.id, User.email, User.is_active, UserProfile.full_name)
+            select(User.id, User.is_active, UserProfile.full_name)
             .outerjoin(UserProfile, UserProfile.user_id == User.id)
             .where(User.id.in_(sender_ids))
         )
         senders = {
             user_id: ChatParticipantDTO(
-                id=user_id, email=email, is_active=is_active, full_name=full_name
+                id=user_id, is_active=is_active, full_name=full_name
             )
-            for user_id, email, is_active, full_name in result.all()
+            for user_id, is_active, full_name in result.all()
         }
         for message in targets:
             sender = senders.get(message.sender_id)

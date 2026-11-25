@@ -11,7 +11,6 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from redis.exceptions import RedisError
-from sqlalchemy import select
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
@@ -148,55 +147,23 @@ async def _resolve_current_user(
     # 3. Redis Session Check (Cache-Aside)
     cached_session = await redis_service.get_session(jti)
 
-    user: User | None = None
-    session: ActiveSession | None = None
-
     if cached_session:
-        # HIT: Fast path validation
+        # Redis supplies only a hint; its user must match the authenticated identity.
         if cached_session["user_id"] != str(user_id):
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
-
         await redis_service.update_last_seen(jti)
-        user = await db.get(User, user_id, options=USER_AUTH_LOAD_OPTIONS)
-        if not user or not user.is_active:
-            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
-        # RZ-3: Use session_id stored in Redis cache for O(1) pk lookup instead
-        # of a secondary WHERE-jti query on every cache-hit request.
-        cached_sid = cached_session.get("session_id")
-        if cached_sid:
-            try:
-                session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
-            except (ValueError, TypeError):  # RZ-28-01
-                session = None
-        if (
-            not session
-            or session.revoked_at
-            or session.user_id != user_id
-            or session.jti != jti
-        ):
-            # Redis supplies only a lookup hint, never session authority. Bind
-            # both the cached PK and the fallback to the authenticated identity.
-            res_s = await db.execute(
-                select(ActiveSession).where(
-                    ActiveSession.jti == jti, ActiveSession.user_id == user_id
-                )
-            )
-            session = res_s.scalars().first()
-            if not session or session.revoked_at:
-                raise_unauthorized(locale, "errors.auth.credentials_invalid")
+    # Authenticate both cache hits and misses against the same authoritative row.
+    session_repo = ActiveSessionRepository(db)
+    row = await session_repo.get_active_session_with_user(
+        user_id, jti, load_options=list(USER_AUTH_LOAD_OPTIONS)
+    )
+    if not row:
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
+    user, session = row
 
-    # 3. MISS or Fallback: Full DB Validation
-    if not user:
-        session_repo = ActiveSessionRepository(db)
-        row = await session_repo.get_active_session_with_user(
-            user_id, jti, load_options=list(USER_AUTH_LOAD_OPTIONS)
-        )
-        if not row:
-            raise_unauthorized(locale, "errors.auth.credentials_invalid")
-        user, session = row
-
-        # Populate Redis (Cache-Aside) — include session_id to avoid N+1 on next HIT
+    if not cached_session:
+        # Populate Redis (Cache-Aside) with metadata from the validated session.
         fp = SessionFingerprint(
             user_agent=str(session.user_agent or ""),
             ip_address=str(session.ip_address or ""),
@@ -216,9 +183,6 @@ async def _resolve_current_user(
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     # 4. Security Lifecycle Validation
-    if session is None:
-        raise_unauthorized(locale, "errors.auth.credentials_invalid")
-    assert session is not None  # noqa: S101
     if not session_epoch_is_current(session.mfa_epoch, user.mfa_epoch):
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 

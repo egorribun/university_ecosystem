@@ -5,7 +5,6 @@ import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from app.core.config import settings
 from app.deps.cache import BaseCache, CacheEntry, get_cache
 
 if TYPE_CHECKING:
@@ -34,7 +33,10 @@ def resolve_period_key(period_key: str | None, period_days: int | None) -> str:
     return "default"
 
 
-def _make_cache_key(kind: str, user_id: uuid.UUID | int | str, period_key: str) -> str:
+def make_stats_cache_key(
+    kind: str, user_id: uuid.UUID | int | str, period_key: str
+) -> str:
+    """Return the canonical key shared by readers, fenced writers and invalidators."""
     normalized_kind = kind.strip().lower()
     normalized_period = _normalize_period_key(period_key)
     return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{user_id!s}:{normalized_period}"
@@ -51,34 +53,13 @@ async def get_cached_stats(
     backend = _ensure_cache(cache)
     if skip_cache or not backend.enabled:
         return None
-    entry = await backend.get(_make_cache_key(kind, user_id, period_key))
+    entry = await backend.get(make_stats_cache_key(kind, user_id, period_key))
     if entry is None or not isinstance(entry.payload, dict):
         return None
     return CacheEntry(
         etag=entry.etag,
         payload=copy.deepcopy(entry.payload),
         stored_at=entry.stored_at,
-    )
-
-
-async def set_cached_stats(
-    *,
-    cache: BaseCache | None,
-    kind: str,
-    user_id: uuid.UUID | int | str,
-    period_key: str,
-    payload: dict[str, object],
-    skip_cache: bool = False,
-    ttl: int | None = None,
-) -> CacheEntry | None:
-    backend = _ensure_cache(cache)
-    if skip_cache or not backend.enabled:
-        return None
-    effective_ttl = ttl if ttl is not None else settings.stats_cache_ttl_seconds
-    return await backend.set(
-        _make_cache_key(kind, user_id, period_key),
-        copy.deepcopy(payload),
-        ttl=effective_ttl,
     )
 
 
@@ -112,7 +93,7 @@ async def invalidate_user_stats_cache(
     for user_id in unique_users:
         for kind in selected_kinds:
             for period in chosen_periods:
-                keys.append(_make_cache_key(kind, user_id, period))
+                keys.append(make_stats_cache_key(kind, user_id, period))
     if (
         keys
     ):  # pragma: no branch - user/kind/default period invariants make this non-empty

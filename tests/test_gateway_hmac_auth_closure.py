@@ -86,6 +86,9 @@ def _auth_harness(
     revocation_factory = AsyncMock(return_value=revocation_client)
 
     repository_factory = MagicMock()
+    repository_factory.return_value.get_active_session_with_user = AsyncMock(
+        return_value=(user, session)
+    )
     security_service = MagicMock()
     security_service.validate_session_expiry = MagicMock()
     security_service.handle_mfa_ttl = AsyncMock()
@@ -155,7 +158,8 @@ async def test_release_accepts_independently_computed_exact_gateway_hmac(
     assert result is harness.user
     harness.revocation_factory.assert_awaited_once()
     harness.redis_service.get_session.assert_awaited_once_with(session_id)
-    assert harness.db.get.await_count == 2
+    harness.db.get.assert_not_awaited()
+    harness.repository_factory.return_value.get_active_session_with_user.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -324,7 +328,8 @@ async def test_operator_tenant_checks_stored_user_even_with_valid_gateway_proof(
         assert not hasattr(harness.request.state, "active_session")
     harness.revocation_factory.assert_awaited_once()
     harness.redis_service.get_session.assert_awaited_once_with(session_id)
-    assert harness.db.get.await_count == 2
+    harness.db.get.assert_not_awaited()
+    harness.repository_factory.return_value.get_active_session_with_user.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -50,6 +50,7 @@ export const EventsHeader = ({
 }: EventsHeaderProps) => {
   const { t } = useTranslation(["events", "common"])
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -128,6 +129,7 @@ export const EventsHeader = ({
               className="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none"
             />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -139,7 +141,10 @@ export const EventsHeader = ({
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => onSearchChange("")}
+                  onClick={() => {
+                    onSearchChange("")
+                    searchInputRef.current?.focus()
+                  }}
                   className="flex size-11 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={t("events:aria.clearSearch")}
                 >

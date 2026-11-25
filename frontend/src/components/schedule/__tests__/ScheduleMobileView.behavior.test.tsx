@@ -18,6 +18,8 @@ import {
 import { createInstance } from "i18next"
 import { I18nextProvider } from "react-i18next"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import compiledCss from "@/styles/tailwind.css?inline"
+import scheduleCss from "@/styles/tokens/schedule.css?inline"
 import { ScheduleMobileView } from "@/components/schedule/ScheduleMobileView"
 import { type Lesson } from "@/components/schedule/scheduleUtils"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
@@ -86,7 +88,11 @@ function AddDialogProbe() {
   return activeDialog === "add" ? <output aria-label="Lesson draft day">{addDay}</output> : null
 }
 
-async function renderMobile(overrides: Partial<DataProps> = {}, language = "en") {
+async function renderMobile(
+  overrides: Partial<DataProps> = {},
+  language = "en",
+  withScheduleTheme = false
+) {
   const i18n = createInstance()
   await i18n.init({
     lng: language,
@@ -119,7 +125,7 @@ async function renderMobile(overrides: Partial<DataProps> = {}, language = "en")
       <I18nextProvider i18n={i18n}>
         <RouterContextProvider router={router}>
           <SchedulePageProvider>
-            {children}
+            {withScheduleTheme ? <div className="schedule-theme">{children}</div> : children}
             <AddDialogProbe />
           </SchedulePageProvider>
         </RouterContextProvider>
@@ -133,6 +139,31 @@ async function renderMobile(overrides: Partial<DataProps> = {}, language = "en")
     rerenderMobile: (updates: Partial<DataProps>) =>
       view.rerender(<ConfiguredMobileView {...props} {...updates} />),
   }
+}
+
+function parseComputedRgb(value: string): number[] {
+  const match = value.match(/^rgba?\(\s*([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)/iu)
+  if (!match) throw new Error("Expected a computed RGB color")
+  return match.slice(1, 4).map(Number)
+}
+
+function contrastAgainstTab(element: Element, tab: Element): number {
+  const style = getComputedStyle(element)
+  const foreground = parseComputedRgb(style.color)
+  const background = parseComputedRgb(getComputedStyle(tab).backgroundColor)
+  const opacity = style.opacity === "" ? 1 : Number.parseFloat(style.opacity)
+  if (!Number.isFinite(opacity)) throw new Error("Expected a computed opacity")
+  const composite = foreground.map(
+    (channel, index) => channel * opacity + background[index]! * (1 - opacity)
+  )
+  const luminance = (color: number[]) =>
+    color
+      .map((channel) => channel / 255)
+      .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0)
+  const a = luminance(composite)
+  const b = luminance(background)
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 }
 
 function expectActivePanel(tab: HTMLElement, heading: string) {
@@ -159,6 +190,62 @@ afterEach(() => {
 })
 
 describe("ScheduleMobileView behavior", () => {
+  it.each([
+    ["light", "en"],
+    ["light", "ru"],
+    ["dark", "en"],
+    ["dark", "ru"],
+  ] as const)(
+    "keeps populated selected and unselected day tabs readable in %s %s",
+    async (theme, language) => {
+      const style = document.createElement("style")
+      style.textContent = compiledCss + "\n" + scheduleCss
+      document.head.append(style)
+      const rootClass = document.documentElement.className
+      const bodyClass = document.body.className
+      document.documentElement.classList.toggle("dark", theme === "dark")
+      document.body.classList.toggle("dark", theme === "dark")
+      try {
+        const user = userEvent.setup()
+        await renderMobile({}, language, true)
+
+        const verify = (selectedHasCount: boolean) => {
+          const selected = screen.getByRole("tab", { selected: true })
+          const unselected = screen.getAllByRole("tab", { selected: false })
+          const populated = unselected.find((tab) => tab.querySelector("sup"))
+          const empty = unselected.find((tab) => !tab.querySelector("sup"))
+          if (!populated || !empty) throw new Error("Expected populated and empty day tabs")
+          expect(Boolean(selected.querySelector("sup"))).toBe(selectedHasCount)
+          for (const tab of [selected, ...unselected]) {
+            const selectedState = tab === selected
+            const label = tab.querySelector(".relative.z-surface")
+            const count = label?.querySelector("sup")
+            if (!label) throw new Error("Expected a day tab label")
+            expect(tab).toHaveAttribute("aria-selected", String(selectedState))
+            expect(contrastAgainstTab(label, tab)).toBeGreaterThanOrEqual(4.5)
+            if (count) {
+              expect(contrastAgainstTab(count, tab)).toBeGreaterThanOrEqual(4.5)
+              const opacity = getComputedStyle(count).opacity
+              expect(opacity === "" ? 1 : Number.parseFloat(opacity)).toBe(selectedState ? 1 : 0.7)
+            }
+          }
+          return { populated, empty }
+        }
+
+        const initial = verify(true)
+        await user.click(initial.populated)
+        const next = verify(true)
+        await user.click(next.empty)
+        verify(false)
+      } finally {
+        cleanup()
+        document.documentElement.className = rootClass
+        document.body.className = bodyClass
+        style.remove()
+      }
+    }
+  )
+
   it.each([
     { language: "en", title: "Schedule", monday: "Monday", saturday: "Saturday" },
     { language: "ru", title: "Расписание", monday: "Понедельник", saturday: "Суббота" },

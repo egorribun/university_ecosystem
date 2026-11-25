@@ -195,7 +195,7 @@ async def stats_summary(
     """Return attendance, grades and participation stats in a single request.
 
     PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
-    The queries share one request-scoped AsyncSession, so run sequentially.
+    Missing sections share one request-scoped AsyncSession and one data read.
     They reuse the same Redis cache entries as the individual endpoints.
     """
     period_key, days = _resolve_period(period)
@@ -215,9 +215,9 @@ async def stats_summary(
             skip_cache=skip_cache,
         )
 
-    attendance_r = await handler.handle(_make_query("attendance"))
-    grades_r = await handler.handle(_make_query("grades"))
-    participation_r = await handler.handle(_make_query("participation"))
+    attendance_r, grades_r, participation_r = await handler.handle_summary(
+        (_make_query("attendance"), _make_query("grades"), _make_query("participation"))
+    )
 
     # Build a combined ETag from the three sub-ETags.
     sub_etags = "".join(r.etag or "" for r in (attendance_r, grades_r, participation_r))

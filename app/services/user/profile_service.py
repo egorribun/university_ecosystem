@@ -39,6 +39,11 @@ class UserProfileService:
         self.audit = audit
         self.notifications = notifications
 
+    async def get_pending_email(self, user_id: uuid.UUID | str) -> str | None:
+        """Read the active request without mutating the authenticated user."""
+        pending = await self.uow.auth.get_active_email_change_request(user_id)
+        return pending.new_email if pending else None
+
     async def get_user_by_id(self, user_id: uuid.UUID | str) -> UserDTO | None:
         return await self.repo.get(user_id)
 

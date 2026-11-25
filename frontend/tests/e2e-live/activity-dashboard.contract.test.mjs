@@ -25,15 +25,27 @@ test("Activity empty-baseline acceptance uses only seeded records and the real r
   assert.match(analytics, /self\.stats_repo = UserStatsRepository\(db\)/u)
   assert.match(analytics, /self\.stats_repo\.get_attendance_stats_raw\(\s*user_id,/u)
   assert.match(analytics, /self\.stats_repo\.get_grades\(\s*user_id, previous_start, now\s*\)/u)
-  const attendance = repository.match(
+  const attendanceReader = repository.match(
     /^ {4}async def get_attendance_stats_raw\([\s\S]*?(?=^ {4}async def )/mu
   )?.[0]
-  const grades = repository.match(/^ {4}async def get_grades\([\s\S]*?(?=^ {4}async def )/mu)?.[0]
-  assert.ok(attendance, "attendance queries must live in the statistics repository")
-  assert.ok(grades, "grade queries must live in the statistics repository")
+  const gradesReader = repository.match(
+    /^ {4}async def get_grades\([\s\S]*?(?=^ {4}async def )/mu
+  )?.[0]
+  assert.ok(attendanceReader, "attendance queries must live in the statistics repository")
+  assert.ok(gradesReader, "grade queries must live in the statistics repository")
+  assert.match(
+    attendanceReader,
+    /_attendance_statement\(user_id, window_start, previous_start, now\)/u
+  )
+  assert.match(gradesReader, /_grades_statement\(user_id, start_date, end_date\)/u)
+  // The summary endpoint reuses these module-level statements in one UNION read.
+  const attendance = repository.match(/^def _attendance_statement\([\s\S]*?(?=^def )/mu)?.[0]
+  const grades = repository.match(/^def _grades_statement\([\s\S]*?(?=^def )/mu)?.[0]
+  assert.ok(attendance, "the attendance statement must remain in the statistics repository")
+  assert.ok(grades, "the grade statement must remain in the statistics repository")
   assert.match(attendance, /attendance = models\.EventAttendance/u)
-  const windowPattern = /window_events = \([\s\S]*?(?=\n {8}history_events =)/u
-  const historyPattern = /history_events = \([\s\S]*?(?=\n {8}result =)/u
+  const windowPattern = /window_events = \([\s\S]*?(?=\n {4}history_events =)/u
+  const historyPattern = /history_events = \([\s\S]*?(?=\n {4}(?:#|return ))/u
   const windowEvents = attendance.match(windowPattern)?.[0]
   const historyEvents = attendance.match(historyPattern)?.[0]
   assert.ok(windowEvents, "the comparison population must remain bounded")

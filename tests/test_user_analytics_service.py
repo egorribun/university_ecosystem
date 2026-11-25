@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
+from app.deps.cache import MemoryCache
 from app.services import stats_cache
 from app.services.user.analytics_service import UserAnalyticsService
 
@@ -166,7 +167,10 @@ async def test_attendance_stats_returns_cached_payload(svc, user_factory, monkey
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_attendance_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel
 
@@ -243,21 +247,31 @@ async def test_grade_stats_returns_cached_payload(svc, user_factory, monkeypatch
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_grade_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel
 
 
 @pytest.mark.asyncio
 async def test_computed_stats_are_written_to_cache(svc, user_factory, monkeypatch):
+    from app.core.config import settings
+    from app.deps.cache import MemoryCache
+
     user = await user_factory()
-    monkeypatch.setattr(stats_cache, "get_cached_stats", AsyncMock(return_value=None))
-    setter = AsyncMock()
-    monkeypatch.setattr(stats_cache, "set_cached_stats", setter)
-    result = await svc.get_grade_stats(user_id=user.id, period_days=7)
-    setter.assert_awaited_once()
-    assert setter.await_args.kwargs["kind"] == "grades"
-    assert setter.await_args.kwargs["payload"] is result
+    cache = MemoryCache(default_ttl=60)
+    read = AsyncMock(wraps=svc.stats_repo.get_grades)
+    monkeypatch.setattr(svc.stats_repo, "get_grades", read)
+    result = await svc.get_grade_stats(user_id=user.id, period_days=7, cache=cache)
+    key = stats_cache.make_stats_cache_key("grades", user.id, "7d")
+    entry = await cache.get(key)
+    assert entry is not None and entry.payload == result
+    assert entry.ttl_seconds == float(settings.stats_cache_ttl_seconds)
+    again = await svc.get_grade_stats(user_id=user.id, period_days=7, cache=cache)
+    assert again == result
+    read.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +319,9 @@ async def test_participation_stats_returns_cached_payload(
         AsyncMock(return_value=SimpleNamespace(payload=sentinel)),
     )
     result = await svc.get_participation_stats(
-        user_id=user.id, period_days=30, skip_cache=False
+        user_id=user.id,
+        period_days=30,
+        cache=MemoryCache(default_ttl=60),
+        skip_cache=False,
     )
     assert result is sentinel

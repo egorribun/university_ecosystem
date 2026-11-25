@@ -36,9 +36,7 @@ NOW = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _participant(full_name: str | None = "Alice") -> ChatParticipantDTO:
-    return ChatParticipantDTO(
-        id=uuid.uuid4(), full_name=full_name, email="a@example.com", is_active=True
-    )
+    return ChatParticipantDTO(id=uuid.uuid4(), full_name=full_name, is_active=True)
 
 
 def _attachment_dto(url: str = "https://cdn.example.com/a.png") -> AttachmentDTO:

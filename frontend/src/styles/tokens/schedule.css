@@ -130,8 +130,9 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
 
-    /* ── On-accent text for existing schedule badges and controls.
-         The calendar marker uses its own theme-paired tokens below. */
+    /* ── On-accent text for lesson-type and building badges on their own
+         colors. Brand surfaces (bg-brand) pair with text-inverse-text, which
+         follows the theme's --primary-main. */
     --sched-on-accent: white;
 
     /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
@@ -209,7 +210,7 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-700) 15%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
 
-    /* Preserve the existing foreground for other schedule badges and controls. */
+    /* Lesson-type and building badges only; see the light-theme note. */
     --sched-on-accent: white;
 
     /* FIX-72-03: dark heat map tokens — increased opacity for visibility */

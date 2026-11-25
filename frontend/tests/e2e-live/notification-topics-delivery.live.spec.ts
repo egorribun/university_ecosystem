@@ -660,7 +660,14 @@ const savePushOptInAndTopics = async (
   expect(topicsResponse.status(), "the selected delivery topics persist for the endpoint").toBe(200)
   await expect(pushSwitch).toBeChecked()
 
-  const subscriptionReceipt = (await subscriptionResponse.json()) as { endpoint?: unknown }
+  const subscriptionReceipt = (await subscriptionResponse.json()) as {
+    endpoint?: unknown
+    user_id?: unknown
+  }
+  expect(
+    subscriptionReceipt.user_id === recipientId,
+    "the saved subscription belongs to the synthetic recipient"
+  ).toBe(true)
   if (typeof subscriptionReceipt.endpoint !== "string") {
     throw new Error("the server did not return the test-owned push endpoint")
   }

@@ -25,8 +25,9 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     isAuth &&
     (import.meta.env.VITE_LHCI !== "true" || import.meta.env.VITE_LHCI_ENABLE_MESSENGER === "true")
 
-  const { isConnected, sendTyping, sendJoin, sendLeave, getTypingUsersForChat } = useChatWebSocket({
+  const socketState = useChatWebSocket({
     enabled: realtimeEnabled,
+    roomAdmission: true,
     // Wave 204 SW5 — for the hook's self-echo guard (drops the sender's own
     // new_message/read echo that the room fan-out sends back).
     currentUserId: user?.id,
@@ -99,6 +100,8 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       })
     },
   })
+  const { isConnected, admittedRoom, sendTyping, sendJoin, sendLeave, getTypingUsersForChat } =
+    socketState
 
   const { data: canonicalChats } = useQuery({
     queryKey: ["chats"],
@@ -131,12 +134,22 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       unreadCount,
       presenceMap,
       isConnected,
+      admittedRoom,
       sendTyping,
       sendJoin,
       sendLeave,
       getTypingUsersForChat,
     }),
-    [unreadCount, presenceMap, isConnected, sendTyping, sendJoin, sendLeave, getTypingUsersForChat]
+    [
+      unreadCount,
+      presenceMap,
+      isConnected,
+      admittedRoom,
+      sendTyping,
+      sendJoin,
+      sendLeave,
+      getTypingUsersForChat,
+    ]
   )
 
   return <MessengerContext.Provider value={value}>{children}</MessengerContext.Provider>

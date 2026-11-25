@@ -80,6 +80,9 @@ class _Handler:
         self.queries.append(query)
         return self.results.pop(0)
 
+    async def handle_summary(self, queries):
+        return tuple([await self.handle(query) for query in queries])
+
 
 def _request(*, locale: str | None = None) -> Request:
     headers = [(b"accept-language", locale.encode())] if locale else []

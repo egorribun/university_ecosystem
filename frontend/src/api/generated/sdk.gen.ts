@@ -3449,7 +3449,7 @@ export const participationSummaryApiV1StatsParticipationGet = <
  * Return attendance, grades and participation stats in a single request.
  *
  * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
- * The queries share one request-scoped AsyncSession, so run sequentially.
+ * Missing sections share one request-scoped AsyncSession and one data read.
  * They reuse the same Redis cache entries as the individual endpoints.
  */
 export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(

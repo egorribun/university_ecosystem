@@ -1,14 +1,16 @@
 import hashlib
 import json
+import secrets
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.localization import (  # LOW-W19: moved from deferred inline import
     translate,
     translate_lesson_type,
@@ -20,6 +22,7 @@ from app.repositories.schedule_repository import (
 )
 from app.schemas import schemas
 from app.services import stats_cache  # LOW-W19: moved from deferred inline import
+from app.services.stats_fill_fence import StatsFillFence, reservation_ttl
 
 
 @dataclass
@@ -97,17 +100,48 @@ class GetStatsQuery(Query):
     skip_cache: bool
 
 
+class StatsFillFenceProtocol(Protocol):
+    """Fence one stats cache fill.
+
+    ``supported`` tells whether stats for this cache backend may be cached at
+    all. ``reserve`` and ``complete`` return True on success, False on
+    conflict, or None when the outcome is unknown or unsupported.
+    """
+
+    @property
+    def supported(self) -> bool: ...  # pragma: no branch
+
+    async def reserve(
+        self, key: str, token: str, ttl: int
+    ) -> bool | None: ...  # pragma: no branch
+
+    async def complete(
+        self, key: str, token: str, payload: object, ttl: int
+    ) -> bool | None: ...  # pragma: no branch
+
+
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
     def __init__(
-        self, db: AsyncSession, cache: BaseCache, analytics_service: Any
+        self,
+        db: AsyncSession,
+        cache: BaseCache,
+        analytics_service: Any,
+        *,
+        fill_fence: StatsFillFenceProtocol | None = None,
     ) -> None:
         self.db = db
         self.cache = cache
         self.analytics_service = analytics_service
+        self.fill_fence = (
+            fill_fence if fill_fence is not None else StatsFillFence(cache)
+        )
+
+    def _caches(self, query: GetStatsQuery) -> bool:
+        return not query.skip_cache and self.cache.enabled and self.fill_fence.supported
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         stats = None
-        if not query.skip_cache and self.cache.enabled:
+        if self._caches(query):
             cached = await stats_cache.get_cached_stats(
                 cache=self.cache,
                 kind=query.kind,
@@ -137,6 +171,150 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 skip_cache=query.skip_cache,
             )
 
+        return self._stats_result(stats, query)
+
+    async def handle_summary(
+        self, queries: tuple[GetStatsQuery, GetStatsQuery, GetStatsQuery]
+    ) -> tuple[QueryResult, QueryResult, QueryResult]:
+        """Read uncached summary sections together while retaining per-kind caches."""
+        if tuple(query.kind for query in queries) != (
+            "attendance",
+            "grades",
+            "participation",
+        ):
+            raise ValueError("Invalid summary kinds")
+        first = queries[0]
+        if any(
+            (q.user_id, q.period_key, q.period_days, q.locale, q.skip_cache)
+            != (
+                first.user_id,
+                first.period_key,
+                first.period_days,
+                first.locale,
+                first.skip_cache,
+            )
+            for q in queries[1:]
+        ):
+            raise ValueError("Summary queries must share user and representation scope")
+
+        raw: dict[str, dict[str, Any]] = {}
+        hot_period_keys: dict[str, str] = {}
+        missing: list[str] = []
+        for query in queries:
+            cached = None
+            lookup_period_key = query.period_key
+            if self._caches(query):
+                cached = await stats_cache.get_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=query.period_key,
+                )
+                if cached is None:
+                    # Match the service's own cache lookup before calculating a miss.
+                    lookup_period_key = stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    )
+                    cached = await stats_cache.get_cached_stats(
+                        cache=self.cache,
+                        kind=query.kind,
+                        user_id=query.user_id,
+                        period_key=lookup_period_key,
+                    )
+            if cached is None:
+                missing.append(query.kind)
+            else:
+                raw[query.kind] = cached.payload
+                hot_period_keys[query.kind] = lookup_period_key
+
+        if missing:
+            reservations: dict[str, tuple[str, str]] = {}
+            if self._caches(first):
+                for query in queries:
+                    if query.kind not in missing:
+                        continue
+                    period_key = stats_cache.resolve_period_key(
+                        query.period_key, query.period_days
+                    )
+                    cache_key = stats_cache.make_stats_cache_key(
+                        query.kind, query.user_id, period_key
+                    )
+                    token = secrets.token_hex(16)
+                    reserved = await self.fill_fence.reserve(
+                        cache_key, token, reservation_ttl()
+                    )
+                    if reserved is True:
+                        reservations[query.kind] = (cache_key, token)
+
+            computed = await self.analytics_service.get_summary_stats(
+                user_id=first.user_id,
+                period_days=first.period_days,
+                period_key=first.period_key,
+                kinds=missing,
+            )
+
+            # A hot entry can disappear while the first snapshot is being read.
+            vanished: list[str] = []
+            for query in queries:
+                if query.kind in missing or not self._caches(query):
+                    continue
+                replacement = await stats_cache.get_cached_stats(
+                    cache=self.cache,
+                    kind=query.kind,
+                    user_id=query.user_id,
+                    period_key=hot_period_keys[query.kind],
+                )
+                if replacement is None:
+                    vanished.append(query.kind)
+                else:
+                    raw[query.kind] = replacement.payload
+
+            if vanished:
+                refreshed = await self.analytics_service.get_summary_stats(
+                    user_id=first.user_id,
+                    period_days=first.period_days,
+                    period_key=first.period_key,
+                    kinds=vanished,
+                )
+                for kind in vanished:
+                    raw[kind] = refreshed[kind]
+
+            for query in queries:
+                if query.kind not in missing:
+                    continue
+                payload = computed[query.kind]
+                completed = False
+                reservation = reservations.get(query.kind)
+                if reservation is not None:
+                    cache_key, token = reservation
+                    completed = (
+                        await self.fill_fence.complete(
+                            cache_key,
+                            token,
+                            payload,
+                            settings.stats_cache_ttl_seconds,
+                        )
+                    ) is True
+                if not completed and self._caches(query):
+                    replacement = await stats_cache.get_cached_stats(
+                        cache=self.cache,
+                        kind=query.kind,
+                        user_id=query.user_id,
+                        period_key=stats_cache.resolve_period_key(
+                            query.period_key, query.period_days
+                        ),
+                    )
+                    if replacement is not None:
+                        payload = replacement.payload
+                raw[query.kind] = payload
+
+        return (
+            self._stats_result(raw[queries[0].kind], queries[0]),
+            self._stats_result(raw[queries[1].kind], queries[1]),
+            self._stats_result(raw[queries[2].kind], queries[2]),
+        )
+
+    def _stats_result(self, stats: dict[str, Any], query: GetStatsQuery) -> QueryResult:
         # Validators belong to the localized response, not the raw cache entry.
         payload = self._enrich_stats(stats, query)
         etag = self._compute_etag(payload)

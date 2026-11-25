@@ -20,18 +20,22 @@ from tests.conftest import install_dishka_override
 def _handler(cache):
     analytics = UserAnalyticsService(None)
     start = datetime.now(UTC) - timedelta(hours=2)
+    participation = [
+        SimpleNamespace(
+            title="Synthetic seminar",
+            event_type="seminar",
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+        )
+    ]
     analytics.stats_repo = SimpleNamespace(
         get_attendance_stats_raw=AsyncMock(return_value=[]),
         get_grades=AsyncMock(return_value=[]),
-        get_participation_stats_raw=AsyncMock(
-            return_value=[
-                SimpleNamespace(
-                    title="Synthetic seminar",
-                    event_type="seminar",
-                    starts_at=start,
-                    ends_at=start + timedelta(hours=1),
-                )
-            ]
+        get_participation_stats_raw=AsyncMock(return_value=participation),
+        get_summary_rows=AsyncMock(
+            return_value=SimpleNamespace(
+                attendance=[], grades=[], participation=participation
+            )
         ),
     )
     return GetStatsHandler(None, cache, analytics), analytics.stats_repo
@@ -177,12 +181,9 @@ async def test_stats_cached_data_change_invalidates_old_representation_tag():
     )
     assert "period_label" not in cached.payload
     changed = {**cached.payload, "events": cached.payload["events"] + 1}
-    await stats_cache.set_cached_stats(
-        cache=cache,
-        kind="participation",
-        user_id=user_id,
-        period_key="30d",
-        payload=changed,
+    await cache.set(
+        stats_cache.make_stats_cache_key("participation", user_id, "30d"),
+        changed,
     )
     result = await handler.handle(_query(user_id, etag=original.etag))
     assert result.not_modified is False

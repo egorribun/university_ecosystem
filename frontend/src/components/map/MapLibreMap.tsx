@@ -8,7 +8,7 @@
  * Wave 107 — reduced-motion, sky dedup, extrusion fix, timeout cleanup, POI perf.
  */
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { startTransition, useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
@@ -293,7 +293,9 @@ export function MapLibreMapComponent({
       }
       const nextLayout = { markers: collisionMarkers, offsets }
       projectedMarkerLayoutRef.current = nextLayout
-      setProjectedMarkerLayout(nextLayout)
+      // Marker repositioning is not urgent: let React yield while it renders,
+      // so the camera update after a zoom never shares one long task with it.
+      startTransition(() => setProjectedMarkerLayout(nextLayout))
     },
     [collisionMarkers]
   )

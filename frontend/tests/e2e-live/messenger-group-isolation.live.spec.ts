@@ -1,4 +1,10 @@
 import { devices, type BrowserContext, type Page } from "@playwright/test"
+import { createRoomAdmissionObserver } from "./messenger-room-admission"
+import {
+  createGroupHeartbeatObservation,
+  groupPongBeforeSend,
+  reportGroupDeliveryFailure,
+} from "./messenger-group-delivery-diagnostic"
 import {
   expect,
   GROUP_CHAT_ACCOUNTS,
@@ -7,14 +13,11 @@ import {
   loginWith,
   test,
 } from "./fixtures"
-
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
   throw new Error("LIVE_BASE_URL must be set to the endpoint printed by scripts/live_stand.py")
 }
-
 type JsonRecord = Record<string, unknown>
-
 type GroupMessageEvent = {
   type: "new_message" | "message_edited" | "message_deleted"
   chatId: string
@@ -27,13 +30,18 @@ type GroupMessageEvent = {
   senderId?: string
   messageChatId?: string
 }
-
 type SocketObservation = {
   roomJoins: string[]
   groupEvents: GroupMessageEvent[]
-  sessions: { roomJoins: string[]; resumeRooms: string[]; groupEvents: GroupMessageEvent[] }[]
+  sessions: {
+    roomJoins: string[]
+    resumeRooms: string[]
+    groupEvents: GroupMessageEvent[]
+    closed: () => boolean
+    heartbeat: ReturnType<typeof createGroupHeartbeatObservation>
+    admission: ReturnType<typeof createRoomAdmissionObserver>
+  }[]
 }
-
 function parseFrame(frame: { payload: string | Buffer }): unknown {
   try {
     const payload = frame.payload
@@ -42,26 +50,21 @@ function parseFrame(frame: { payload: string | Buffer }): unknown {
     return null
   }
 }
-
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-
 function findRoomJoins(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(findRoomJoins)
   if (!isRecord(value)) return []
-
   const rooms: string[] = []
   if (value.type === "join" && typeof value.room === "string") rooms.push(value.room)
   return [...rooms, ...Object.values(value).flatMap(findRoomJoins)]
 }
-
 function findGroupMessageEvents(value: unknown, chatId?: string): GroupMessageEvent[] {
   if (Array.isArray(value)) {
     return value.flatMap((item) => findGroupMessageEvents(item, chatId))
   }
   if (!isRecord(value)) return []
-
   // Preserve sequence/replay metadata from the hub envelope, rather than
   // recursively discarding it when descending into payload.
   if (isRecord(value.payload)) {
@@ -113,13 +116,11 @@ function findGroupMessageEvents(value: unknown, chatId?: string): GroupMessageEv
       deletedAt: value.deleted_at,
     })
   }
-
   return [
     ...events,
     ...Object.values(value).flatMap((nested) => findGroupMessageEvents(nested, chatId)),
   ]
 }
-
 function observeSocket(page: Page): SocketObservation {
   const observation: SocketObservation = { roomJoins: [], groupEvents: [], sessions: [] }
   page.on("websocket", (socket) => {
@@ -127,6 +128,9 @@ function observeSocket(page: Page): SocketObservation {
       roomJoins: [],
       resumeRooms: [],
       groupEvents: [],
+      closed: () => socket.isClosed(),
+      heartbeat: createGroupHeartbeatObservation(),
+      admission: createRoomAdmissionObserver(),
     }
     observation.sessions.push(session)
     socket.on("framesent", (frame) => {
@@ -134,6 +138,8 @@ function observeSocket(page: Page): SocketObservation {
       const joins = findRoomJoins(value)
       observation.roomJoins.push(...joins)
       session.roomJoins.push(...joins)
+      session.heartbeat.sent(value, session.roomJoins)
+      session.admission.sent(value)
       if (
         isRecord(value) &&
         typeof value.resume_token === "string" &&
@@ -143,14 +149,32 @@ function observeSocket(page: Page): SocketObservation {
       }
     })
     socket.on("framereceived", (frame) => {
-      const events = findGroupMessageEvents(parseFrame(frame))
+      const value = parseFrame(frame)
+      session.heartbeat.received(value)
+      session.admission.received(value)
+      const events = findGroupMessageEvents(value)
       observation.groupEvents.push(...events)
       session.groupEvents.push(...events)
     })
   })
   return observation
 }
-
+function currentAdmission(observation: SocketObservation, room: string) {
+  const session = observation.sessions.at(-1)
+  if (!session || session.closed()) return null
+  const attempt = session.admission.snapshot(room)
+  return attempt === null ? null : { session, attempt }
+}
+function admissionStillCurrent(
+  observation: SocketObservation,
+  receipt: NonNullable<ReturnType<typeof currentAdmission>>
+) {
+  return (
+    observation.sessions.at(-1) === receipt.session &&
+    !receipt.session.closed() &&
+    receipt.session.admission.isCurrent(receipt.attempt)
+  )
+}
 function eventsForMessage(
   observation: SocketObservation,
   chatId: string,
@@ -160,7 +184,6 @@ function eventsForMessage(
     (event) => event.chatId === chatId && event.messageId === messageId
   )
 }
-
 type LiveUser = { id: string; full_name: string | null; role: string }
 type LiveGroup = {
   id: string
@@ -179,13 +202,11 @@ type LiveMessagePage = {
   has_more: boolean
   next_cursor: string | null
 }
-
 async function getCurrentUser(page: Page): Promise<LiveUser> {
   const response = await page.request.get("/api/v1/users/me")
   expect(response.ok()).toBe(true)
   return (await response.json()) as LiveUser
 }
-
 async function findReusableGroup(page: Page, name: string): Promise<LiveGroup | null> {
   const matches: LiveGroup[] = []
   let cursor: string | null = null
@@ -280,6 +301,7 @@ test.describe("live messenger group isolation", () => {
       const secondMemberPage = await secondMemberContext.newPage()
       const nonMemberPage = await nonMemberContext.newPage()
 
+      const ownerSocket = observeSocket(page)
       const teacherSocket = observeSocket(teacherPage)
       const secondMemberSocket = observeSocket(secondMemberPage)
       const nonMemberSocket = observeSocket(nonMemberPage)
@@ -352,16 +374,24 @@ test.describe("live messenger group isolation", () => {
       await expect(ownerLog).toBeVisible()
       await expect(teacherLog).toBeVisible()
       await expect(secondMemberLog).toBeVisible()
+      // A sent join is not membership. Each recipient must receive the matching
+      // direct ACK on its latest open socket before the sender's HTTP POST.
       await expect
-        .poll(() => teacherSocket.roomJoins.filter((room) => room === chatId).length)
-        .toBeGreaterThan(0)
-      await expect
-        .poll(() => secondMemberSocket.roomJoins.filter((room) => room === chatId).length)
-        .toBeGreaterThan(0)
+        .poll(
+          () =>
+            currentAdmission(teacherSocket, chatId) !== null &&
+            currentAdmission(secondMemberSocket, chatId) !== null
+        )
+        .toBe(true)
       await expect
         .poll(() => nonMemberSocket.roomJoins.filter((room) => room === chatId).length)
         .toBeGreaterThan(0)
 
+      const teacherAdmission = currentAdmission(teacherSocket, chatId)
+      const secondMemberAdmission = currentAdmission(secondMemberSocket, chatId)
+      if (!teacherAdmission || !secondMemberAdmission) {
+        throw new Error("Recipient admission changed before send")
+      }
       const message = `live-group-ws-${crypto.randomUUID()}`
       const messageResponsePromise = page.waitForResponse((response) => {
         const request = response.request()
@@ -371,20 +401,42 @@ test.describe("live messenger group isolation", () => {
         )
       })
       await page.locator("#chat-message-input").fill(message)
+      const deliveryObservers = {
+        owner: ownerSocket,
+        teacher: teacherSocket,
+        secondMember: secondMemberSocket,
+      }
+      const pongBeforeSend = groupPongBeforeSend(deliveryObservers, chatId)
+      expect(admissionStillCurrent(teacherSocket, teacherAdmission)).toBe(true)
+      expect(admissionStillCurrent(secondMemberSocket, secondMemberAdmission)).toBe(true)
       await page.locator("#chat-send-btn").click()
       const messageResponse = await messageResponsePromise
       expect(messageResponse.ok()).toBe(true)
+      expect(admissionStillCurrent(teacherSocket, teacherAdmission)).toBe(true)
+      expect(admissionStillCurrent(secondMemberSocket, secondMemberAdmission)).toBe(true)
       const sentMessage = (await messageResponse.json()) as { id: string; content: string }
       expect(sentMessage.content).toBe(message)
 
-      for (const socket of [teacherSocket, secondMemberSocket]) {
-        await expect
-          .poll(() =>
-            eventsForMessage(socket, chatId, sentMessage.id).some(
-              (event) => event.type === "new_message" && event.content === message
+      try {
+        for (const socket of [teacherSocket, secondMemberSocket]) {
+          await expect
+            .poll(() =>
+              eventsForMessage(socket, chatId, sentMessage.id).some(
+                (event) => event.type === "new_message" && event.content === message
+              )
             )
-          )
-          .toBe(true)
+            .toBe(true)
+        }
+      } catch (error) {
+        reportGroupDeliveryFailure(
+          deliveryObservers,
+          chatId,
+          sentMessage.id,
+          message,
+          pongBeforeSend,
+          testInfo
+        )
+        throw error
       }
       await expect(teacherLog.getByText(message, { exact: true })).toBeVisible()
       await expect(secondMemberLog.getByText(message, { exact: true })).toBeVisible()

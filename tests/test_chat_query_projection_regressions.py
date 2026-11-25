@@ -191,9 +191,7 @@ async def test_chat_list_resolves_uuid_last_message_without_coercion(
 def test_explicit_participant_avatar_roundtrips():
     import uuid
 
-    participant = ChatParticipantDTO(
-        id=uuid.uuid4(), email="member@example.com", avatar_url="/static/avatar.png"
-    )
+    participant = ChatParticipantDTO(id=uuid.uuid4(), avatar_url="/static/avatar.png")
     assert ChatParticipantDTO.model_validate(participant.model_dump()) == participant
 
 

@@ -72,9 +72,7 @@ class _PostgresSession:
                 raise AssertionError(
                     "sender_projection_must_follow_authenticated_reload"
                 )
-            return _Scalars(
-                [(self.message.sender_id, "sender@example.test", True, "Sender")]
-            )
+            return _Scalars([(self.message.sender_id, True, "Sender")])
         self.message_queries += 1
         return _Scalars([self.message])
 
