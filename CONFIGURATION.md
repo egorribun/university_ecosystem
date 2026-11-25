@@ -617,10 +617,10 @@ precedence over the unprefixed name.
 | `AUTH_CLIENT_MAX_CONNS_PER_HOST` | Maximum pooled connections per host for the ws-hub auth client; non-positive values are ignored. | `20` |
 | `RATE_LIMIT_RPS` | Gateway rate limit, requests per second per instance. | `100` |
 | `RATE_LIMIT_BURST` | Gateway rate-limit burst size. | `200` |
-| `SPIFFE_ENABLED` | Enables SPIFFE identity in the gateway; only the exact value `true` enables it. | `false` |
+| `SPIFFE_ENABLED` | Enables SPIFFE identity in the gateway and ws-hub; only the exact value `true` enables it. | `false` |
 | `SPIFFE_ENDPOINT_SOCKET` | SPIFFE Workload API socket path. The backend has no default and requires an absolute Unix socket when internal HTTP mTLS is enabled. | `unix:///run/spire/sockets/agent.sock` (Go gateway and ws-hub) |
 | `SPIFFE_TRUST_DOMAIN` | SPIFFE trust domain. | `university.ecosystem` |
-| `SPIFFE_MY_ID` | SPIFFE ID of the gateway workload. | `spiffe://university.ecosystem/ns/default/sa/gateway` |
+| `SPIFFE_MY_ID` | SPIFFE ID of the workload reading this variable. | Gateway: `spiffe://university.ecosystem/ns/default/sa/gateway`; ws-hub: `spiffe://university.ecosystem/ns/default/sa/ws-hub` |
 | `FP_JWT_SECRET` | file-processor JWT verification secret (`_FILE` supported); startup requires this, an RSA public key or a JWKS URL. | Unset |
 | `FP_MINIO_ACCESS_KEY` | file-processor MinIO access key (`_FILE` supported); startup requires a nonempty value. | Bundled development credential in `configureViper` |
 | `FP_MINIO_SECRET_KEY` | file-processor MinIO secret key (`_FILE` supported); startup requires a nonempty value. | Bundled development credential in `configureViper` |
