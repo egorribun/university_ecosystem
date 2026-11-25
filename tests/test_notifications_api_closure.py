@@ -414,6 +414,58 @@ async def test_list_notifications_count_fallback_branches() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("columns", "failure", "message"),
+    [
+        (
+            {"read", "id"},
+            "no such column: read (fixture detail)",
+            "Falling back to row-based unread count due to schema mismatch",
+        ),
+        (
+            {"id", "user_id"},
+            "database unavailable (fixture detail)",
+            "Falling back to row-based total count due to SQLAlchemy error",
+        ),
+    ],
+)
+async def test_notification_count_fallback_warning_omits_request_data(
+    columns: set[str], failure: str, message: str
+) -> None:
+    user = _user()
+    rows = [_row(user.id)]
+    db = AsyncMock()
+    db.execute.side_effect = SQLAlchemyError(failure)
+
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(
+            api,
+            "_fetch_notification_rows",
+            AsyncMock(return_value=(rows, columns)),
+        ),
+        patch.object(api, "logger") as log,
+    ):
+        result = await call_injected(
+            api.list_notifications,
+            _request(),
+            Response(),
+            user=user,
+            cursor=None,
+            limit=20,
+            provides={"AsyncDatabaseSession": db},
+        )
+
+    assert result.unread_count == 1
+    log.warning.assert_called_once_with(
+        message, extra={"error_type": "SQLAlchemyError"}
+    )
+    rendered = repr(log.warning.call_args)
+    assert failure not in rendered
+    assert str(user.id) not in rendered
+
+
+@pytest.mark.asyncio
 async def test_mark_read_single_all_read_and_not_found_paths() -> None:
     user = _user()
     request = _request()

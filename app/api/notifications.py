@@ -458,9 +458,10 @@ async def _collect_notifications(
         except SQLAlchemyError as exc:
             if not _is_missing_column_error(exc):
                 raise
+            # The class is enough to triage; the message can carry SQL and request data.
             logger.warning(
                 "Falling back to row-based unread count due to schema mismatch",
-                extra={"error": str(exc), "user_id": str(user.id)},
+                extra={"error_type": type(exc).__name__},
             )
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
     else:
@@ -472,7 +473,7 @@ async def _collect_notifications(
         except SQLAlchemyError as exc:
             logger.warning(
                 "Falling back to row-based total count due to SQLAlchemy error",
-                extra={"error": str(exc), "user_id": str(user.id)},
+                extra={"error_type": type(exc).__name__},
             )
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
 

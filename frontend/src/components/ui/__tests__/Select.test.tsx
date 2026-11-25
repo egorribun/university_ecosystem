@@ -115,14 +115,25 @@ describe("Select — rendering & ARIA", () => {
     expect(trigger()).toHaveAttribute("aria-activedescendant", optionId(0))
   })
 
-  it("exposes the closed-state combobox ARIA contract", () => {
+  it("references the listbox only while the combobox is open", () => {
     renderSelect()
     const btn = trigger()
     expect(btn).toHaveAttribute("id", "sel-trigger")
     expect(btn).toHaveAttribute("aria-haspopup", "listbox")
     expect(btn).toHaveAttribute("aria-expanded", "false")
-    expect(btn).toHaveAttribute("aria-controls", "sel-listbox")
+    expect(btn).not.toHaveAttribute("aria-controls")
     expect(btn).not.toHaveAttribute("aria-activedescendant")
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+
+    fireEvent.click(btn)
+    const listbox = screen.getByRole("listbox")
+    expect(listbox).toHaveAttribute("id", "sel-listbox")
+    expect(btn).toHaveAttribute("aria-expanded", "true")
+    expect(btn).toHaveAttribute("aria-controls", listbox.id)
+
+    fireEvent.keyDown(btn, { key: "Escape" })
+    expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-controls")
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
 
