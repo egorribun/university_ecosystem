@@ -15,15 +15,15 @@ export function DataTablePagination<TData extends RowData>({
 }: DataTablePaginationProps<TData>) {
   const { t } = useTranslation(["common"])
   return (
-    <div className="flex items-center justify-between px-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-2">
       <div className="flex-1 text-sm text-text-secondary">
         {t("common:pagination.selected", {
           selected: table.getFilteredSelectedRowModel().rows.length,
           total: table.getFilteredRowModel().rows.length,
         })}
       </div>
-      <div className="flex items-center space-x-6 lg:space-x-8">
-        <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 lg:gap-x-8">
+        <div className="flex items-center gap-2">
           <p className="text-sm font-medium" id="data-table-pagination-pagesize-label">
             {t("common:pagination.rowsPerPage")}
           </p>
@@ -36,7 +36,7 @@ export function DataTablePagination<TData extends RowData>({
               label: `${pageSize}`,
               value: `${pageSize}`,
             }))}
-            className="h-8 w-20"
+            className="w-20"
             // Wave 120 polish-v2 — connect the visible label via aria-labelledby
             // so the combobox button has an accessible name (axe `button-name`
             // failed on /admin/users without this).
@@ -49,7 +49,7 @@ export function DataTablePagination<TData extends RowData>({
             total: table.getPageCount(),
           })}
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             className="hidden size-11 p-0 lg:flex"

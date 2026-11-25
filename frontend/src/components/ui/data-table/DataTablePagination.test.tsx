@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { DataTablePagination } from "./DataTablePagination"
 import type { DataTableInstance } from "./dataTableFeatures"
+import { expectBaseUtility } from "@/tests/helpers/expectBaseUtility"
 
 type TestRow = Record<string, never>
 
@@ -42,6 +43,19 @@ describe("DataTablePagination", () => {
     expect(table.previousPage).toHaveBeenCalledOnce()
     expect(table.nextPage).toHaveBeenCalledOnce()
     expect(table.setPageIndex).toHaveBeenNthCalledWith(2, 2)
+  })
+
+  it("keeps navigation at the 44px target and lets the controls wrap on narrow screens", () => {
+    const { container } = render(<DataTablePagination table={makeTable()} />)
+    for (const button of screen.getAllByRole("button")) {
+      expectBaseUtility(button, "width", "calc(var(--spacing) * 11)")
+      expectBaseUtility(button, "height", "calc(var(--spacing) * 11)")
+    }
+    const row = container.firstElementChild as HTMLElement
+    expectBaseUtility(row, "flex-wrap", "wrap")
+    expectBaseUtility(row.lastElementChild as HTMLElement, "flex-wrap", "wrap")
+    // The Select trigger sets its own 48px height; a fixed wrapper height clipped its layout box.
+    expect(screen.getByRole("combobox").parentElement).not.toHaveClass("h-8")
   })
 })
 

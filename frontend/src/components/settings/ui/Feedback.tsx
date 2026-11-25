@@ -41,7 +41,7 @@ export function Alert({
           type="button"
           onClick={onClose}
           aria-label={t("common:buttons.close")}
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-xs transition hover:bg-black/[calc(var(--opacity-faint)*100%)] dark:hover:bg-white/[calc(var(--opacity-faint)*100%)]"
+          className="-my-3 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-xs transition hover:bg-black/[calc(var(--opacity-faint)*100%)] dark:hover:bg-white/[calc(var(--opacity-faint)*100%)]"
         >
           ×
         </button>

@@ -45,6 +45,8 @@ describe("Feedback primitives", () => {
     expect(close).toHaveAttribute("type", "button")
     expectBaseUtility(close, "width", "calc(var(--spacing) * 11)")
     expectBaseUtility(close, "height", "calc(var(--spacing) * 11)")
+    // The target overlaps the alert padding so a one-line alert keeps its height.
+    expectBaseUtility(close, "margin-block", "calc(var(--spacing-3) * -1)")
   })
 
   it("renders chips, avatars, and circular progress with forwarded props", () => {
