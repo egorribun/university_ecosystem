@@ -39,6 +39,52 @@ def test_push_recipient_records_are_closed_bounded_and_deduplicated() -> None:
         assert parse(row) == []
 
 
+def test_provider_rejections_that_forced_a_resubscribe_are_closed_classes() -> None:
+    parse = evidence._live_playwright_push_recipient_observations
+    rows = "".join(
+        f"UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario={scenario} "
+        "check=provider-gone subscription=changed\n"
+        for scenario in ("setup", "chat", "reply")
+    )
+    assert parse(rows) == [
+        ("mobile", 0, "setup", "provider-gone", "changed"),
+        ("mobile", 0, "chat", "provider-gone", "changed"),
+        ("mobile", 0, "reply", "provider-gone", "changed"),
+    ]
+    for row in (
+        "UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario=topics "
+        "check=provider-gone subscription=changed\n",
+        "UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario=setup "
+        "check=provider-410 subscription=changed\n",
+    ):
+        assert parse(row) == []
+
+
+def test_live_runner_relays_a_provider_resubscribe(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    row = (
+        "UE_LIVE_PUSH_RECIPIENT_V1 project=mobile retry=0 scenario=setup "
+        "check=provider-gone subscription=changed\n"
+    )
+    stand = stand_tests.live_stand
+    result = subprocess.CompletedProcess(
+        stand._live_e2e_command(mode="smoke"),
+        1,
+        stdout=(row + "https://fcm.example/private-endpoint\n").encode(),
+        stderr=b"",
+    )
+    stand_tests._patch_live_playwright_result(monkeypatch, result)
+    with pytest.raises(stand.StandError, match="exit code 1"):
+        stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert (
+        "live E2E push recipient project=mobile retry=0 scenario=setup "
+        "check=provider-gone subscription=changed"
+    ) in captured.out
+    assert "private-endpoint" not in captured.out + captured.err
+
+
 def test_push_recipient_records_have_a_run_wide_cap() -> None:
     rows = [
         f"UE_LIVE_PUSH_RECIPIENT_V1 project={project} retry={retry} "

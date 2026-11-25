@@ -731,6 +731,26 @@ test("chat message reaches Chromium through its real push subscription", async (
       subscribed.endpoint === subscriptionEndpoint,
       "the persisted server binding belongs to this native browser endpoint"
     ).toBe(true)
+    const chatProbe = await import("./push-provider-probe.mjs")
+    const acceptedSubscription = await chatProbe.requireProviderAcceptedSubscription({
+      adminPage,
+      recipientPage: page,
+      recipientId: String(identityBody.id),
+      endpoint: subscriptionEndpoint,
+      project: testInfo.project.name,
+      retry: testInfo.retry,
+      probeCase: "chat",
+      resubscribe: () =>
+        chatProbe.resubscribeThroughPushSwitch(
+          page,
+          async (settingsPage) => {
+            await settingsPage.goto("/settings?tab=3")
+            await expandPushAccordion(settingsPage)
+          },
+          PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+        ),
+    })
+    subscriptionEndpoint = acceptedSubscription.endpoint
     subscriptionBound = true
     await rotationObservation?.optIn(livePushObservationBudgetMs(testInfo))
     await expect(pushSwitch).toBeChecked()
@@ -1075,6 +1095,26 @@ test("quoted group author gets one chat.reply push with group context and no gen
       true
     )
     expect(subscribed.endpoint === subscriptionEndpoint).toBe(true)
+    const replyProbe = await import("./push-provider-probe.mjs")
+    const acceptedSubscription = await replyProbe.requireProviderAcceptedSubscription({
+      adminPage,
+      recipientPage: page,
+      recipientId: quotedAuthor.id,
+      endpoint: subscriptionEndpoint,
+      project: testInfo.project.name,
+      retry: testInfo.retry,
+      probeCase: "reply",
+      resubscribe: () =>
+        replyProbe.resubscribeThroughPushSwitch(
+          page,
+          async (settingsPage) => {
+            await settingsPage.goto("/settings?tab=3")
+            await expandPushAccordion(settingsPage)
+          },
+          PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+        ),
+    })
+    subscriptionEndpoint = acceptedSubscription.endpoint
     subscriptionBound = true
     await rotationObservation?.optIn(livePushObservationBudgetMs(testInfo))
     await expect(pushSwitch).toBeChecked()

@@ -1209,6 +1209,34 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
     const optIn = await savePushOptInAndTopics(page, adminPage, email)
     recipientId = optIn.recipientId
     subscriptionEndpoint = optIn.subscriptionEndpoint
+    const { requireProviderAcceptedSubscription, resubscribeThroughPushSwitch } =
+      await import("./push-provider-probe.mjs")
+    const probe = await requireProviderAcceptedSubscription({
+      adminPage,
+      recipientPage: page,
+      recipientId: optIn.recipientId,
+      endpoint: optIn.subscriptionEndpoint,
+      project: testInfo.project.name,
+      retry: testInfo.retry,
+      probeCase: "topics",
+      resubscribe: () =>
+        resubscribeThroughPushSwitch(
+          page,
+          async (settingsPage) => {
+            await settingsPage.goto("/settings?tab=3")
+            await expandPushAccordion(settingsPage)
+          },
+          PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS
+        ),
+    })
+    subscriptionEndpoint = probe.endpoint
+    if (probe.resubscribed) {
+      const preferences = await readAdminTopicPreferences(adminPage, optIn.recipientId)
+      expect(
+        new Set(preferences.topics),
+        "resubscribing after a provider rejection keeps the recipient topics"
+      ).toEqual(new Set(RECIPIENT_TOPICS))
+    }
     await rotationObservation.optIn(
       livePushObservationBudgetMs(testInfo, SCHEDULE_CLEANUP_WAIT_TIMEOUT_MS)
     )
