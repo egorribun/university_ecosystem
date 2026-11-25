@@ -67,6 +67,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/pwa-offline-shell-i18n.live.spec.ts",
     "tests/e2e-live/pwa-offline-shell.live.spec.ts",
     "tests/e2e-live/register-double-submit.live.spec.ts",
+    "tests/e2e-live/register-standard.live.spec.ts",
     "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts",
     "tests/e2e-live/schedule-grid-keyboard.live.spec.ts",
     "tests/e2e-live/schedule-hydration-i18n.live.spec.ts",
@@ -3115,7 +3116,7 @@ _PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
     r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
 )
-_PLAYWRIGHT_FULL_COLLECTION_COUNT = 232
+_PLAYWRIGHT_FULL_COLLECTION_COUNT = 244
 _PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 220
 _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
 _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
@@ -3915,6 +3916,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "push-subscription.live.spec.ts": (115,),
     "pwa-offline-shell.live.spec.ts": (239, 323),
     "register-double-submit.live.spec.ts": (42,),
+    "register-standard.live.spec.ts": (237, 241, 245, 249, 253, 257),
     "schedule-200-equivalent-reflow.live.spec.ts": (5,),
     "schedule-grid-keyboard.live.spec.ts": (5,),
     "schedule-hydration-i18n.live.spec.ts": (87, 91),
