@@ -297,9 +297,10 @@ _PLAYWRIGHT_PUSH_OBSERVATION_LIMIT = 4
 _PLAYWRIGHT_PUSH_RECIPIENT_LINE = re.compile(
     r"UE_LIVE_PUSH_RECIPIENT_V1 project=(?P<project>desktop|mobile) "
     r"retry=(?P<retry>[01]) "
-    r"scenario=(?P<scenario>chat|reply|news|events|schedule|release) "
+    r"scenario=(?P<scenario>setup|chat|reply|news|events|schedule|release) "
     r"check=(?P<check>none|pending|multiple|auth|other|invalid|"
-    r"session-owner-match|session-owner-mismatch|unreadable|network) "
+    r"session-owner-match|session-owner-mismatch|unreadable|network|"
+    r"provider-gone) "
     r"subscription=(?P<subscription>same|changed|missing|unavailable)"
 )
 _PLAYWRIGHT_PUSH_RECIPIENT_LIMIT = 32
@@ -3906,7 +3907,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "password-reset.live.spec.ts": (129,),
     "profile-csrf.live.spec.ts": (99,),
     "profile-persistence.live.spec.ts": (102, 302),
-    "push-delivery.live.spec.ts": (492, 590, 915),
+    "push-delivery.live.spec.ts": (492, 590, 935),
     "push-permission-default.live.spec.ts": (17,),
     "push-permission-denied.live.spec.ts": (44,),
     "push-subscription.live.spec.ts": (115,),
