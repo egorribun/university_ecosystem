@@ -88,8 +88,14 @@ and are outside the MVP blocking release gate.
 - **Services**: `gateway`, `ws-hub`, `file-processor`, `cmd/uni-cli`.
 - **Linting**: `.golangci.yml` with `exhaustive` and `gosec` linters. Run `golangci-lint run ./...` inside service directories.
 - **Unit & Integration Testing**:
-  - `go test ./...` in each service directory.
-  - `make test-integration` (runs ADR-022 Testcontainers-go integration suite covering NATS, Redis, and S3 storage on SeaweedFS).
+  - From the repository root, run `make go-test` for the Go unit suites with the race detector.
+  - Start Docker for the [ADR-022 Testcontainers-go integration suites](adr/ADR-022-go-services-integration-testing-with-testcontainers.md). Run these targets from the repository root:
+
+    ```bash
+    make -C services/gateway test-integration
+    make -C services/ws-hub test-integration
+    make -C services/file-processor test-integration
+    ```
 
 ---
 
