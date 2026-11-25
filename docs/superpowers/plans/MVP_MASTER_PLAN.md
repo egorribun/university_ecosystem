@@ -190,10 +190,16 @@
 - **Доставка.** Пакет передаётся локальным HTML-файлом с сеткой скриншотов, без публикации: на экранах
   виден бренд ГУУ. Владелец отвечает в чате.
 - **Инструмент** — `frontend/scripts/authenticated-visual-audit.mjs`, против живого стенда.
-  - Переменные: `VISUAL_CAPTURE_MATRIX=1`, `SOURCE_SHA`, `TEST_EMAIL`, `TEST_PASSWORD`, `ORIGIN`,
-    `OUT_DIR` (вне checkout) и `VISUAL_WIDTHS`.
-  - Его allowlist `ROUTES` не знает вход, регистрацию и детальные страницы новостей и мероприятий.
-    Расширить allowlist с тестами; новый инструмент не создавать.
+  - Задать `VISUAL_CAPTURE_MATRIX=1`, `VISUAL_LOCALES=ru,en`, `VISUAL_THEMES=light,dark` и
+    `VISUAL_WIDTHS=390,1440`. Если ширины не указаны, инструмент добавит 768 px.
+  - Указать полный `SOURCE_SHA` живого Core-стенда, его `ORIGIN`, синтетические `TEST_EMAIL` и
+    `TEST_PASSWORD`, абсолютный `OUT_DIR` вне checkout.
+  - Задать `ROUTES` явно: `/login`, `/register`, `/dashboard`, `/news`, `/news/<UUID>`, `/events`,
+    `/events/<UUID>`, `/schedule`, `/map`, `/messenger`, `/profile`, `/settings`. Значение —
+    список через запятую; оба UUID взять из demo-данных этого стенда. Маршруты входа, регистрации
+    и обе детальные страницы уже поддерживаются, но не входят в список по умолчанию.
+  - Перед сборкой HTML-сетки сверить все 96 ячеек: 12 маршрутов × 2 языка × 2 темы × 2 ширины.
+    Отдельно перепроверить контраст на `/schedule` в тёмной теме при 390 px.
 - **Утверждение** фиксируется так же, как у Home12: `frontend/visual-baselines/live/<package>/`,
   `approval.json`, PNG и SHA-256, sourceCommit и браузер.
 
