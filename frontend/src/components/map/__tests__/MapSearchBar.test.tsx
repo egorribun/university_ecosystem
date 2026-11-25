@@ -193,7 +193,7 @@ describe("MapSearchBar", () => {
     expect(input).toHaveAccessibleName("search.ariaLabel")
     expect(input).toHaveAttribute("placeholder", "search.placeholder")
     expect(input).toHaveAttribute("aria-expanded", "false")
-    expect(input).toHaveAttribute("aria-controls", expect.stringMatching(/-listbox$/))
+    expect(input).not.toHaveAttribute("aria-controls")
   })
 
   it("renders the search combobox", () => {
@@ -417,6 +417,44 @@ describe("MapSearchBar", () => {
 
     fireEvent.change(input, { target: { value: "no such place" } })
     expect(input).toHaveAttribute("aria-expanded", "false")
+    expect(input).not.toHaveAttribute("aria-controls")
+    expect(input).not.toHaveAttribute("aria-activedescendant")
+  })
+
+  it("removes popup and active-option references when a highlighted result closes on blur", () => {
+    vi.useFakeTimers()
+    try {
+      render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Campus" } })
+      fireEvent.keyDown(input, { key: "ArrowDown" })
+      expect(input).toHaveAttribute("aria-activedescendant", screen.getAllByRole("option")[0]!.id)
+
+      fireEvent.blur(input)
+      act(() => vi.advanceTimersByTime(200))
+
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+      expect(input).toHaveAttribute("aria-expanded", "false")
+      expect(input).not.toHaveAttribute("aria-activedescendant")
+      expect(input).not.toHaveAttribute("aria-controls")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not reference a highlighted option removed by a results refresh", () => {
+    const { rerender } = render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
+    const input = screen.getByRole("combobox")
+    fireEvent.change(input, { target: { value: "Campus" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    const selected = screen.getAllByRole("option")[1]!
+    expect(input).toHaveAttribute("aria-activedescendant", selected.id)
+
+    rerender(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS.slice(0, 1)} />)
+
+    expect(selected).not.toBeInTheDocument()
+    expect(input).toHaveAttribute("aria-controls", screen.getByRole("listbox").id)
     expect(input).not.toHaveAttribute("aria-activedescendant")
   })
 
