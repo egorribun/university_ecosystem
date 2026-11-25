@@ -97,11 +97,11 @@ class RedisSessionBackend(SessionBackend):
         # Notify Gateway to invalidate its L1 cache
         try:
             await self._revocation_redis.publish("session:revocations", jti)
-        except (
-            RedisError,
-            OSError,
-        ):  # RZ-22-01: narrowed — Redis pub/sub errors
-            logger.warning("Failed to publish session revocation for jti=%s", jti)
+        except (RedisError, OSError) as exc:
+            logger.warning(
+                "Failed to publish session revocation",
+                error_type=type(exc).__name__,
+            )
 
 
 async def get_session_backend() -> SessionBackend:

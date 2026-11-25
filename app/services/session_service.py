@@ -41,18 +41,16 @@ async def register_session_bg(
                 "user_agent": user_agent,
             },
         )
-    except (RedisConnectionError, RedisTimeoutError, OSError):
+    except (RedisConnectionError, RedisTimeoutError, OSError) as exc:
         # Cache connection failures (including cache credentials) must not discard
         # a committed login. Redis driver exceptions are not built-in OSErrors.
         # Mandatory revocation checks and writes remain fail-closed elsewhere.
         logger.warning(
             "Failed to cache session in Redis",
-            exc_info=True,
             extra={
-                "user_id": str(user_id),
-                "jti": jti,
                 "component": "session_backend",
                 "operation": "register",
+                "error_type": type(exc).__name__,
             },
         )
 
