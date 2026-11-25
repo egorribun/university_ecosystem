@@ -457,7 +457,12 @@ async def test_notification_count_fallback_warning_omits_request_data(
         )
 
     assert result.unread_count == 1
-    log.warning.assert_called_once_with(message)
+    log.warning.assert_called_once_with(
+        message, extra={"error_type": "SQLAlchemyError"}
+    )
+    rendered = repr(log.warning.call_args)
+    assert failure not in rendered
+    assert str(user.id) not in rendered
 
 
 @pytest.mark.asyncio
