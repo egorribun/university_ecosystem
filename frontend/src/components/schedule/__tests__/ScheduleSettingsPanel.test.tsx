@@ -58,6 +58,29 @@ describe("ScheduleSettingsPanel", () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it("closes the export menu before Escape can close the settings dialog", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(
+      <ScheduleSettingsPanel
+        {...baseProps}
+        onClose={onClose}
+        googleCalendarUrl="https://calendar.google.com/calendar/r/eventedit"
+      />
+    )
+    const trigger = screen.getByRole("button", { name: "schedule:toolbar.export" })
+    await user.click(trigger)
+    expect(screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(trigger).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it("fires setCurrentParity when the even parity button is clicked", async () => {
     const user = userEvent.setup()
     const setCurrentParity = vi.fn()

@@ -273,7 +273,7 @@ describe("ExportDropdown — branches", () => {
     await user.click(trigger())
     expect(screen.getByRole("menu")).toBeInTheDocument()
 
-    fireEvent.keyDown(document, { key: "Escape" })
+    await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
@@ -282,8 +282,8 @@ describe("ExportDropdown — branches", () => {
     render(<ExportDropdown gridRef={gridRefWithEl()} />)
     await user.click(trigger())
 
-    const event = new KeyboardEvent("keydown", { key: "Tab", cancelable: true })
-    document.dispatchEvent(event)
+    const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })
+    screen.getByRole("menuitem", { name: "schedule:export.pdf" }).dispatchEvent(event)
 
     expect(screen.getByRole("menu")).toBeInTheDocument()
     expect(event.defaultPrevented).toBe(false)
@@ -294,12 +294,18 @@ describe("ExportDropdown — branches", () => {
     const removeSpy = vi.spyOn(document, "removeEventListener")
     const user = userEvent.setup()
     render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    const dropdown = trigger().parentElement!
+    const addLocalSpy = vi.spyOn(dropdown, "addEventListener")
+    const removeLocalSpy = vi.spyOn(dropdown, "removeEventListener")
     await user.click(trigger())
     await user.click(trigger())
     expect(removeSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
-    expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
     expect(addSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
-    expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
+    expect(addLocalSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
+    const keyHandler = addLocalSpy.mock.calls.find(([type]) => type === "keydown")?.[1]
+    expect(removeLocalSpy).toHaveBeenCalledWith("keydown", keyHandler)
+    addLocalSpy.mockRestore()
+    removeLocalSpy.mockRestore()
     addSpy.mockRestore()
     removeSpy.mockRestore()
   })
@@ -320,22 +326,22 @@ describe("ExportDropdown — branches", () => {
     const pdfItem = screen.getByRole("menuitem", { name: "schedule:export.pdf" })
     pdfItem.focus()
 
-    fireEvent.keyDown(document, { key: "ArrowDown" })
+    await user.keyboard("{ArrowDown}")
     expect(document.activeElement).toBe(
       screen.getByRole("menuitem", { name: "schedule:export.png" })
     )
 
-    fireEvent.keyDown(document, { key: "ArrowUp" })
+    await user.keyboard("{ArrowUp}")
     expect(document.activeElement).toBe(pdfItem)
 
-    fireEvent.keyDown(document, { key: "ArrowUp" })
+    await user.keyboard("{ArrowUp}")
     expect(document.activeElement).toBe(
       screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
     )
 
     const gcalItem = screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
     gcalItem.focus()
-    fireEvent.keyDown(document, { key: "ArrowDown" })
+    await user.keyboard("{ArrowDown}")
     expect(document.activeElement).toBe(pdfItem)
   })
 
@@ -394,9 +400,9 @@ describe("ExportDropdown — branches", () => {
       expect(calendar).toHaveAttribute("title", reason)
       expect(screen.getByRole("menu")).not.toContainElement(screen.getByText(reason))
       pdf.focus()
-      fireEvent.keyDown(document, { key: "ArrowUp" })
+      await user.keyboard("{ArrowUp}")
       expect(document.activeElement).toBe(png)
-      fireEvent.keyDown(document, { key: "ArrowDown" })
+      await user.keyboard("{ArrowDown}")
       expect(document.activeElement).toBe(pdf)
       fireEvent.click(calendar)
       expect(openSpy).not.toHaveBeenCalled()
@@ -416,10 +422,7 @@ describe("ExportDropdown — branches", () => {
       }
 
       trigger().focus()
-      expect(() => {
-        fireEvent.keyDown(document, { key: "ArrowDown" })
-        fireEvent.keyDown(document, { key: "ArrowUp" })
-      }).not.toThrow()
+      await user.keyboard("{ArrowDown}{ArrowUp}")
       expect(document.activeElement).toBe(trigger())
       expect(screen.getByRole("menu")).toBeInTheDocument()
       expect(openSpy).not.toHaveBeenCalled()

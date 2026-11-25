@@ -9,6 +9,8 @@ import { Download, ChevronDown, FileText, Image, FileDown } from "lucide-react"
 import { logError } from "@/app/logger"
 import { cn } from "@/utils/cn"
 
+const ENABLED_MENU_ITEM = '[role="menuitem"]:not([disabled])'
+
 interface ExportDropdownProps {
   isExporting?: boolean
   /** Ref to the grid element for canvas-based export */
@@ -74,6 +76,7 @@ export function ExportDropdown({
   const [open, setOpen] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const googleCalendarReasonId = useId()
   const googleCalendarReason =
     googleCalendarDisabledReason ?? t("schedule:export.googleCalendarUnavailable")
@@ -90,21 +93,22 @@ export function ExportDropdown({
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
-  // Close on Escape + arrow-key navigation (FIX-67-05: menu a11y)
+  // Focus the menu on open and keep its keyboard navigation local.
   useEffect(() => {
     if (!shouldListenForExportMenu(open)) return
+    const dropdown = dropdownRef.current!
+    dropdown.querySelector<HTMLElement>(ENABLED_MENU_ITEM)?.focus()
     const handleKey = (e: KeyboardEvent) => {
+      const focused = document.activeElement as HTMLElement
       if (e.key === "Escape") {
+        e.stopPropagation()
         setOpen(false)
+        triggerRef.current?.focus()
         return
       }
       if (shouldHandleExportMenuKey(e.key)) {
         e.preventDefault()
-        const menu = dropdownRef.current!.querySelector('[role="menu"]')!
-        const items = Array.from(
-          menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
-        )
-        const focused = document.activeElement as HTMLElement
+        const items = Array.from(dropdown.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM))
         const idx = items.indexOf(focused)
         const nextIndex = getExportMenuNextIndex(
           idx,
@@ -115,8 +119,8 @@ export function ExportDropdown({
         next?.focus()
       }
     }
-    document.addEventListener("keydown", handleKey)
-    return () => document.removeEventListener("keydown", handleKey)
+    dropdown.addEventListener("keydown", handleKey)
+    return () => dropdown.removeEventListener("keydown", handleKey)
   }, [open])
 
   const handleExportPng = useCallback(async () => {
@@ -189,6 +193,7 @@ export function ExportDropdown({
     <div ref={dropdownRef} className={cn("relative z-30", className)}>
       {/* FIX-68-27: plain button — no Button wrapper to avoid gap/wrap issues */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
