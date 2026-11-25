@@ -57,11 +57,18 @@
     --event-media-border: color-mix(in srgb, var(--primary-main) 12%, transparent 88%);
     --event-media-pulse: color-mix(in srgb, var(--primary-main) 15%, var(--bg-surface) 85%);
     --event-divider: color-mix(in srgb, var(--primary-main) 20%, transparent 80%);
+    /* Stories play on a dark stage in both themes, so their white copy,
+       progress bars and controls keep AA contrast over any image. */
     --grad-story-fade: linear-gradient(
       180deg,
       transparent 0%,
-      var(--primary-subtle-bg) 55%,
-      var(--bg-page) 100%
+      color-mix(in srgb, var(--color-slate-950) 65%, transparent) 30%,
+      color-mix(in srgb, var(--color-slate-950) 90%, transparent) 100%
+    );
+    --story-stage-fallback: linear-gradient(
+      160deg,
+      var(--color-blue-700) 0%,
+      var(--color-slate-950) 100%
     );
   }
 

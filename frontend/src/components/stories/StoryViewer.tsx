@@ -159,7 +159,7 @@ export const StoryViewer = ({
       {/* Wave 54: div with role=presentation, not button (FIX-54-03) */}
       <div
         role="presentation"
-        className="pointer-events-auto absolute inset-0 z-base w-full h-full cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/[calc(var(--opacity-strong)*100%)]"
+        className="pointer-events-auto absolute inset-0 z-base w-full h-full cursor-default bg-black/[calc(var(--opacity-heavy)*100%)]"
         onClick={onClose}
       />
       <div
@@ -177,7 +177,9 @@ export const StoryViewer = ({
         <div
           className={cn(
             "relative z-decor flex aspect-9/16 max-h-[92vh] w-[min(96%,960px)] flex-col items-stretch justify-center overflow-hidden text-white landscape:aspect-video landscape:max-h-[94vh] sm:aspect-video sm:w-[min(96%,60rem)]",
-            viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
+            viewerStory.cover_url
+              ? "bg-black"
+              : "bg-(image:--story-stage-fallback) shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
           onPointerDown={handlePointerDown}
@@ -190,7 +192,7 @@ export const StoryViewer = ({
               releaseOnDetach
               srcRaw={viewerStory.cover_url}
               alt={viewerStory.title}
-              className="h-full w-full bg-page object-contain object-center"
+              className="h-full w-full bg-black object-contain object-center"
             />
           ) : (
             <div className="flex w-full items-center justify-between px-fluid-x">
@@ -213,9 +215,7 @@ export const StoryViewer = ({
                 "p-(--fluid-card-p) pt-12 sm:pt-16"
               )}
               style={{
-                backgroundImage: viewerStory.cover_url
-                  ? "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)"
-                  : "var(--grad-story-fade)",
+                backgroundImage: "var(--grad-story-fade)",
                 backdropFilter: overlayBackdropFilter,
                 WebkitBackdropFilter: overlayBackdropFilter,
               }}
