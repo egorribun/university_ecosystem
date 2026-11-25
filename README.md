@@ -282,7 +282,7 @@ The platform includes an integrated observability stack:
 - **OpenTelemetry & Tempo**: End-to-end distributed tracing across Go microservices and FastAPI.
 - **Prometheus**: Gateway L1 revocation-cache counters include `gateway_l1_cache_hits_total` and `gateway_l1_cache_misses_total`.
 - **Pyroscope**: Continuous CPU/Memory profiling (`grafana/pyroscope:2.3.1`).
-- **Grafana Loki + Fluent Bit**: Structured centralized log aggregation (ADR-012).
+- **Grafana Loki**: Centralized log aggregation. Docker Compose uses Grafana Alloy to collect container logs; the Kubernetes logging design uses Fluent Bit. See [ADR-012](docs/adr/ADR-012-centralized-logging.md).
 
 ---
 
