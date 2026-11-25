@@ -9,6 +9,7 @@ import {
   stubBreachedPasswordLookup,
   test,
 } from "./fixtures"
+import { createRoomAdmissionObserver } from "./messenger-room-admission"
 
 const LIVE_BASE_URL = process.env.LIVE_BASE_URL
 if (!LIVE_BASE_URL) {
@@ -36,6 +37,7 @@ type SocketSession = {
   roomJoins: RoomJoin[]
   messages: ReceivedMessage[]
   closed: boolean
+  admission: ReturnType<typeof createRoomAdmissionObserver>
 }
 type SocketObservation = { sessions: SocketSession[] }
 type CreatedLiveMessage = { id: string; content: string }
@@ -95,17 +97,35 @@ function findNewMessages(value: unknown): ReceivedMessage[] {
 function observeSocket(page: Page): SocketObservation {
   const observation: SocketObservation = { sessions: [] }
   page.on("websocket", (socket) => {
-    const session: SocketSession = { roomJoins: [], messages: [], closed: false }
+    const session: SocketSession = {
+      roomJoins: [],
+      messages: [],
+      closed: false,
+      admission: createRoomAdmissionObserver(),
+    }
     observation.sessions.push(session)
-    socket.on("framesent", (frame) => session.roomJoins.push(...findRoomJoins(parseFrame(frame))))
-    socket.on("framereceived", (frame) =>
-      session.messages.push(...findNewMessages(parseFrame(frame)))
-    )
+    socket.on("framesent", (frame) => {
+      const value = parseFrame(frame)
+      session.roomJoins.push(...findRoomJoins(value))
+      session.admission.sent(value)
+    })
+    socket.on("framereceived", (frame) => {
+      const value = parseFrame(frame)
+      session.admission.received(value)
+      session.messages.push(...findNewMessages(value))
+    })
     socket.on("close", () => {
       session.closed = true
     })
   })
   return observation
+}
+
+// The hub acknowledges a join only after its membership checks, so a message sent
+// before this ACK may reach the hub before the receiver is in the room.
+function admittedToRoom(observation: SocketObservation, room: string): boolean {
+  const session = observation.sessions.at(-1)
+  return session !== undefined && !session.closed && session.admission.snapshot(room) !== null
 }
 
 function receivedForChat(observation: SocketObservation, chatId: string): ReceivedMessage[] {
@@ -401,13 +421,7 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
     await expect(senderMessageLog).toBeVisible()
     await receiverPage.goto(`/messenger/${activeChatId}`)
     await expect(receiverLog).toBeVisible()
-    await expect
-      .poll(() =>
-        receiverSocket!.sessions.some((session) =>
-          session.roomJoins.some((join) => join.room === activeChatId)
-        )
-      )
-      .toBe(true)
+    await expect.poll(() => admittedToRoom(receiverSocket, activeChatId)).toBe(true)
 
     const baseline = await sendLiveMessage(page, activeChatId, `live-reconnect-anchor-${identity}`)
     createdMessages.push(baseline)
@@ -493,6 +507,7 @@ test("two synthetic users receive ordered, exactly-once messages sent during a r
       await expect(receiverLog.getByText(message.content, { exact: true })).toHaveCount(1)
     }
 
+    await expect.poll(() => admittedToRoom(receiverSocket, activeChatId)).toBe(true)
     const afterReconnect = await sendLiveMessage(
       page,
       activeChatId,
