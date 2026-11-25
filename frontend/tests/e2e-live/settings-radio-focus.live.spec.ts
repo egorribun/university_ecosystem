@@ -496,7 +496,7 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
     await expect(alert).toHaveCount(1)
     await expect(alert).toBeVisible()
 
-    const close = alert.getByRole("button", { name: "×", exact: true })
+    const close = alert.getByRole("button", { name: "Закрыть", exact: true })
     await expect(close).toHaveCount(1)
     await expect(close).toBeVisible()
     await expect(close).toBeEnabled()
