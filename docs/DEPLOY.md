@@ -270,11 +270,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   Chromium E2E-сборка с покрытием (`E2E_COVERAGE=true` и
   `FRONTEND_BUILD_UNMINIFIED=true`) использует отдельный диагностический предел 9 000 000 байт;
   такой unminified-артефакт не предназначен для деплоя.
-- Проверить офлайн-навигацию и кеширование данных можно e2e-тестом:
+- Эти E2E-тесты Chromium проверяют, что кешированные данные доступны без сети, а ранее не посещённый маршрут открывается из precached shell и гидратируется. Тесты используют подменённые ответы API; проверки развёрнутого Core описаны в [разделе live acceptance](../TESTING.md).
 
   ```bash
   cd frontend
-  npm run test:e2e -- offline.spec.ts
+  npm run test:e2e -- --project=chromium offline.spec.ts offline-shell-fallback.spec.ts
   ```
 
 ### Ротация ключа шифрования TOTP-enrollment

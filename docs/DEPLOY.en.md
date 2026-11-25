@@ -264,11 +264,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   Chromium E2E coverage builds (`E2E_COVERAGE=true` and
   `FRONTEND_BUILD_UNMINIFIED=true`) use a separate 9,000,000-byte diagnostic ceiling;
   that unminified artifact is not deployable.
-- Validate offline navigation and cached payloads via the e2e suite:
+- Use the Chromium E2E tests below to check cached payloads and an unvisited route that must load and hydrate from the precached shell while offline. These tests mock API responses; see the [live acceptance lane](../TESTING.md) for deployed Core checks.
 
   ```bash
   cd frontend
-  npm run test:e2e -- offline.spec.ts
+  npm run test:e2e -- --project=chromium offline.spec.ts offline-shell-fallback.spec.ts
   ```
 
 ### TOTP enrollment encryption key migration
