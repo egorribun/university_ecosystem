@@ -66,6 +66,26 @@ async def test_issue_ws_upgrade_ticket_normalizes_naive_session_expiry() -> None
 
 
 @pytest.mark.asyncio
+async def test_issue_ws_upgrade_ticket_does_not_log_session_identifier() -> None:
+    request, user, session = _ticket_identity()
+    session.jti = "fixture-session-identifier"
+    cache_client = AsyncMock()
+
+    with (
+        patch(
+            "app.api.ws.ticket.get_cache_client",
+            new=AsyncMock(return_value=cache_client),
+        ),
+        patch("app.api.ws.ticket.logger") as log,
+    ):
+        await issue_ws_upgrade_ticket(request=request, current_user=user)
+
+    log.debug.assert_called_once()
+    template, *args = log.debug.call_args.args
+    rendered_message = template % tuple(args)
+    assert session.jti[:8] not in rendered_message
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("active", "revoked", "expired", "session_user_id", "case"),
     (
