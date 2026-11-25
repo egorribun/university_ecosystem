@@ -4,8 +4,8 @@ import { expect } from "@playwright/test"
 
 // A push provider can report a just-created endpoint as gone (HTTP 410)
 // within seconds, while the browser still holds it. Probe each new test-owned
-// subscription before a scenario depends on it, and resubscribe once on a
-// provider rejection. Scenario assertions stay strict: they never absorb a 410.
+// subscription before a scenario depends on it, and resubscribe on a provider
+// rejection, at most twice (owner decision, 2026-11-25). Scenario assertions stay strict: they never absorb a 410.
 // Each rejection is reported through the existing recipient observation
 // protocol. Never return an endpoint, key, request or error text to the runner.
 const PROJECTS = new Set(["desktop", "mobile"])
@@ -13,7 +13,8 @@ const SCENARIOS = { topics: "setup", chat: "chat", reply: "reply" }
 const PROBE_TAG_PREFIX = "live-push-provider-probe-"
 const NOTIFICATION_WAIT_MS = 30_000
 const MAX_RATE_LIMIT_WAIT_MS = 65_000
-const MAX_ATTEMPTS = 2
+// One probe plus up to two resubscribes, each followed by a fresh probe.
+const MAX_ATTEMPTS = 3
 
 /** Map a `/api/v1/push/test` response for one subscription to a closed class. */
 export function classifyProbeResponse(status, body) {
@@ -38,7 +39,7 @@ export function rateLimitWaitMs(body) {
   return Math.min(MAX_RATE_LIMIT_WAIT_MS, hint * 1_000 + 1_000)
 }
 
-/** Record a provider rejection that forced one resubscribe, as a closed class. */
+/** Record a provider rejection that forced a resubscribe, as a closed class. */
 export function formatResubscribeLine({ project, retry, probeCase }) {
   const scenario = Object.hasOwn(SCENARIOS, probeCase) ? SCENARIOS[probeCase] : null
   if (!PROJECTS.has(project) || (retry !== 0 && retry !== 1) || scenario === null) return null
@@ -93,8 +94,8 @@ const closeProbeNotification = (recipientPage, tag) =>
 
 /**
  * Require the push provider to accept the recipient's only subscription.
- * Returns the endpoint to use from now on: the original one, or the one a
- * single resubscribe created after the provider reported the first as gone.
+ * Returns the endpoint to use from now on: the original one, or the one the
+ * last resubscribe created after the provider reported earlier ones as gone.
  */
 export async function requireProviderAcceptedSubscription({
   adminPage,
