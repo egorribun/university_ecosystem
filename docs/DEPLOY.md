@@ -236,7 +236,7 @@ Workflow проверяет эти права до мутаций и прину�
 ```bash
 # пример
 cd frontend
-cp .env.production .env.local      # при необходимости
+cp .env.example .env.local      # при необходимости
 VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```

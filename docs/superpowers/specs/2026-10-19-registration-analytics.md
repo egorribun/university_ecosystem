@@ -1,5 +1,7 @@
 # Complete registration analytics and explicit delta units
 
+> **Status (2026-11-26): implemented** in `app/services/user/analytics_service.py`; the audit documents record the AUD-011, AUD-012 and AUD-014 outcome.
+
 Date: 2026-10-19. Source inspected: bd4fd6f0f6cb6435978764f0ca4107ac4d031def.
 Scope: AUD-011, AUD-012 and AUD-014; only egorribun through GitHub plugin. Tests execute in hosted Actions.
 

@@ -1,5 +1,7 @@
 # Pure signed Core metadata parser
 
+> **Status (2026-11-26): completed slice** of the owned NATS outage plan (`parse_signed_owner_v11` in `scripts/live_nats_transport.py`).
+
 Date: 2026-10-19. GitHub plugin only, branch egorribun, PR1306.
 
 ## Why this slice

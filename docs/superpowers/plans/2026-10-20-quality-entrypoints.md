@@ -1,5 +1,7 @@
 # Audit quality entrypoint contracts
 
+> **Status (2026-11-26): completed.** The contracts below are in place. Kept because `docs/audits/AUDIT-2026-10.md` cites this plan.
+
 ## Accepted artifact stability
 
 AUD-086 has named, source-bound behavioral proof in job 118415281373, not merely aggregate job success. Seven paired shell/server stability cases pass at 2026-10-20 02:13:08 UTC; source aa7ea4265ec21ed9d88fc253785d0bc9660adb72 and test ce5227820d601c7412d7788f36431d287ab192b3 remain unchanged. The bounded sampling claim does not imply producer completion, full asset stability or general process-tree quiescence.

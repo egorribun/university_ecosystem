@@ -467,7 +467,7 @@ history, not active permissions.
 
 The durable floors remain pyasn1>=0.6.5,<0.7 and brotli>=1.2.1,<2 in UV
 constraints, pillow>=13.0.0,<14 in production dependencies, and
-virtualenv>=21.14.9 in development dependencies. The ordinary global seven-day
+virtualenv>=21.14.13 in development dependencies. The ordinary global seven-day
 policy applies to every package. The isolated pre-commit hook's exact tooling
 pins are retained for reproducibility; they are not cooldown exemptions.
 

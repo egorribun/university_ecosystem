@@ -93,14 +93,14 @@ chat_type: Mapped[str] = mapped_column(
 
 ### 3.2. Rule TD-33-08: NotificationService Exclusivity
 - **Rule**: `NotificationService` is provided **ONLY** by `ContentProvider` (`app/core/di/content.py`).
-- **AST Linter Enforcement**: `scripts/custom_ast_linter.py` validates all AST import nodes. Run it with `uv run --frozen python scripts/custom_ast_linter.py`. It is not wired into CI or pre-commit, so run it whenever you change notification DI wiring. Importing `NotificationService` from `app.deps.user`, or defining a duplicate provider in `users.py`, makes it fail.
+- **AST Linter Enforcement**: `scripts/custom_ast_linter.py` validates all AST import nodes. Run it with `uv run --frozen python scripts/custom_ast_linter.py`. It is not wired into CI or pre-commit, so run it whenever you change notification DI wiring. Importing `NotificationService` from any module other than its definition (`app.services.notification_service`) or `app.core.di.content` makes it fail; only `ContentProvider` in `app/core/di/content.py` provides it.
 
 ```python
 # CORRECT
-from app.deps.content import NotificationService
+from app.services.notification_service import NotificationService
 
 # FORBIDDEN (rejected by custom_ast_linter.py)
-from app.deps.user import NotificationService
+from app.core.di.users import NotificationService
 ```
 
 ---
@@ -239,7 +239,7 @@ GraphQL runtime (AUD-368) is separate and remains governed by
 |---|---|---|
 | `relationship(..., lazy="select")` | Causes unmonitored N+1 queries and async MissingGreenlet | `relationship(..., lazy="noload")` + explicit `selectinload` |
 | Applicable column default without DDL `server_default` | Causes MissingGreenlet during Pydantic validation of new instances | Provide both `default=val` and `server_default=val`, or record an ADR-036 exception |
-| `from app.deps.user import NotificationService` | Violates DI encapsulation rule TD-33-08 (AST linter fails) | `from app.deps.content import NotificationService` |
+| `from app.core.di.users import NotificationService` | Violates DI encapsulation rule TD-33-08 (AST linter fails) | `from app.services.notification_service import NotificationService`; only `app/core/di/content.py` provides it |
 | `except Exception:` without tag | Swallows unexpected bugs and violates exception policy | Use narrowed exceptions or tag `# RZ-22-01-JUSTIFIED: <reason>` |
 | `except A, B:` | Python 2 syntax rejected by `no-python2-except` hook | `except (A, B):` |
 | Storing `revoked:jti:*` in cache Redis | Cache eviction (volatile-lru) can resurrect revoked tokens | Store exclusively in persistent `REVOCATION_REDIS_URL` |

@@ -1,5 +1,7 @@
 # Reviewed frozen-RC selection
 
+> **Status (2026-11-26): implemented** (`quality/frozen-rc.json`, `scripts/quality/resolve_frozen_rc_manifest.py` and the `validate-frozen-rc` job).
+
 Date: 2026-10-19 (Europe/Istanbul). Scope: owner-approved replacement of the manual frozen_rc_sha dispatch input with a reviewed tracked manifest. Source-only implementation on egorribun; no RC selection, default-branch bootstrap, merge or deployment is authorized.
 
 ## Outcome and security boundary

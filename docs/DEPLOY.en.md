@@ -231,7 +231,7 @@ reconciliation proof, and an explicit rollout applies the new values.
 ```bash
 # example
 cd frontend
-cp .env.production .env.local      # if needed
+cp .env.example .env.local      # if needed
 VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```

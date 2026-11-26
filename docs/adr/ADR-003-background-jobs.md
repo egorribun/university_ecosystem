@@ -1,7 +1,7 @@
 # ADR-003: Taskiq for Background Jobs
 
 ## Status
-Superseded by NATS JetStream architecture.
+Superseded: background work runs on NATS JetStream (`app/core/nats_broker.py`); no successor ADR was written.
 
 ## Context
 We needed an async-first background job system that integrates well with our FastAPI + asyncio stack.
