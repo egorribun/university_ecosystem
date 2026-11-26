@@ -666,6 +666,36 @@ class TestSendWebPush:
         assert result.status == "error"
         assert result.status_code == 429
 
+    @pytest.mark.parametrize(
+        ("response_code", "delivery_status"),
+        [(410, "gone"), (429, "error")],
+    )
+    def test_provider_response_body_is_not_retained_as_delivery_detail(
+        self,
+        mock_pywebpush: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        response_code: int,
+        delivery_status: str,
+    ) -> None:
+        from pywebpush import WebPushException
+
+        private_detail = uuid.uuid4().hex
+        response = requests.Response()
+        response.status_code = response_code
+        response._content = f"Provider diagnostics: {private_detail}".encode()
+        mock_pywebpush.side_effect = WebPushException(
+            f"Push failed: {response_code}\nResponse body:{response.text}",
+            response=response,
+        )
+
+        result = send_web_push(self._make_sub(), {"title": "Test"})
+
+        assert result.status == delivery_status
+        assert result.status_code == response_code
+        assert private_detail not in (result.error or "")
+        assert private_detail not in caplog.text
+        assert result.error
+
     def test_error_generic_exception(self, mock_pywebpush):
         mock_pywebpush.side_effect = ConnectionError("Connection reset")
         result = send_web_push(self._make_sub(), {"title": "Error"})

@@ -757,8 +757,9 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         )
     except WebPushException as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        # The exception includes the provider body. Never retain it in delivery details.
         message = str(exc)
-        safe_message = _redact_urls_in_error(message)
+        safe_detail = "push provider rejected delivery" if message else None
         message_without_urls = _URL_IN_ERROR_RE.sub("", message)
         gone = status_code in (404, 410) or bool(
             re.match(
@@ -783,7 +784,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 user_id=uuid.UUID(str(user_id)) if user_id else None,
                 status="gone",
                 status_code=status_code,
-                error=safe_message or None,
+                error=safe_detail,
                 _binding_version=binding_version,
             )
         _log_event(
@@ -800,7 +801,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             user_id=uuid.UUID(str(user_id)) if user_id else None,
             status="error",
             status_code=status_code,
-            error=safe_message or None,
+            error=safe_detail,
             _binding_version=binding_version,
         )
     except (ConnectionError, TimeoutError, OSError, ValueError) as exc:
