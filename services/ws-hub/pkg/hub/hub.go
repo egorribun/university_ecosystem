@@ -2054,8 +2054,7 @@ func (h *Hub) handleNotificationsCallback(appCtx context.Context, msg *nats.Msg)
 		safeAck(msg)
 	default:
 		BroadcastDropsTotal.Inc()
-		h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
-			"subject", msg.Subject)
+		h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification")
 		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
@@ -2064,14 +2063,14 @@ func (h *Hub) decodeNotification(msgCtx context.Context, msg *nats.Msg) (*Messag
 	var wsMsg Message
 	if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
 		h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS notification dropped",
-			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			"size", len(msg.Data), "error_type", fmt.Sprintf("%T", err))
 		safeAck(msg)
 		return nil, false
 	}
 	subjectUserID, validSubject := notificationUserIDFromSubject(msg.Subject)
 	if !validSubject || wsMsg.To == "" || wsMsg.To != subjectUserID || wsMsg.Room != "" {
 		h.Logger.WarnContext(msgCtx, "ws-hub: NATS notification destination rejected",
-			"subject", msg.Subject, "has_to", wsMsg.To != "", "has_room", wsMsg.Room != "")
+			"valid_subject", validSubject, "has_to", wsMsg.To != "", "has_room", wsMsg.Room != "")
 		safeAck(msg)
 		return nil, false
 	}
