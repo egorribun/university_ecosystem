@@ -264,11 +264,15 @@ async def test_smtp_errors_keep_task_logging_and_suppression_contract(
     assert log_event.call_args_list[0].kwargs["extra"] == {
         "email": "user@example.test",
         "link": "https://example.test/reset",
+        "error_type": "OSError",
     }
     assert log_event.call_args_list[1].args[1] == "auth.lockout_email.error"
-    assert log_event.call_args_list[1].kwargs["extra"] == {"email": "user@example.test"}
+    assert log_event.call_args_list[1].kwargs["extra"] == {
+        "email": "user@example.test",
+        "error_type": "SMTPException",
+    }
     assert log_event.call_args_list[0].kwargs["exc_info"] is False
-    assert log_event.call_args_list[1].kwargs["exc_info"] is True
+    assert log_event.call_args_list[1].kwargs["exc_info"] is False
     assert events == [
         "reset.abort",
         "reset.close",
@@ -279,6 +283,36 @@ async def test_smtp_errors_keep_task_logging_and_suppression_contract(
     reset_client.close.assert_called_once()
     lockout_client.transport.abort.assert_called_once()
     lockout_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_lockout_delivery_logs_only_safe_smtp_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    configured_smtp: SimpleNamespace,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.tasks import email as email_tasks
+
+    peer_detail = "mailbox unavailable for student@example.test"
+    error = email_tasks.aiosmtplib.SMTPDataError(554, peer_detail)
+    client = _smtp_client(AsyncMock(side_effect=error))
+    monkeypatch.setattr(email_tasks.aiosmtplib, "SMTP", MagicMock(return_value=client))
+    handler = getattr(
+        email_tasks.send_lockout_alert, "__wrapped__", email_tasks.send_lockout_alert
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await handler("student@example.test", "Student")
+
+    records = [
+        record for record in caplog.records if record.msg == "auth.lockout_email.error"
+    ]
+    [record] = records
+    assert not record.exc_info
+    assert record.__dict__["error_type"] == "SMTPDataError"
+    assert record.__dict__["smtp_status"] == 554
+    assert peer_detail not in caplog.text
+    assert "student@example.test" not in repr(record.__dict__)
 
 
 @pytest.mark.asyncio
@@ -824,6 +858,7 @@ async def test_shared_delivery_error_preserves_non_link_metadata_without_credent
     assert log_event.call_args.kwargs["extra"] == {
         "email": "user@example.test",
         "delivery_id": "mail-task-43",
+        "error_type": "OSError",
     }
     logged_call = repr(log_event.mock_calls)
     assert smtp_user not in logged_call
