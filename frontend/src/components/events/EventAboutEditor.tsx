@@ -65,7 +65,8 @@ export function EventAboutEditor({
       await telemetryContext.run(onUpdate)
       setTimeout(() => {
         const heading = sectionRef.current
-        if (heading === null) return
+        if (heading === null || heading.ownerDocument.activeElement !== heading.ownerDocument.body)
+          return
         heading.focus()
       }, 0)
     } catch (err) {
