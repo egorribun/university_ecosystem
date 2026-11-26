@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import { ForwardModal } from "../ForwardModal"
 import type { Contact } from "../types"
@@ -176,10 +177,31 @@ describe("ForwardModal", () => {
       <ForwardModal open={true} onClose={() => {}} contacts={mockContacts} onSelect={onSelect} />
     )
 
-    const button = screen.getByRole("option", { name: /John Doe/ })
+    const button = screen.getByRole("button", { name: /John Doe/ })
     fireEvent.click(button)
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect).toHaveBeenCalledWith("contact-1")
+  })
+
+  it("exposes each destination as a directly activatable keyboard action", async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    render(
+      <ForwardModal open={true} onClose={() => {}} contacts={mockContacts} onSelect={onSelect} />
+    )
+
+    const destinations = screen.getByRole("group", { name: "messenger:forwardTo" })
+    const first = within(destinations).getByRole("button", { name: /John Doe/ })
+    const second = within(destinations).getByRole("button", { name: /Jane Smith/ })
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "common:buttons.close" })).toHaveFocus()
+    await user.tab()
+    expect(first).toHaveFocus()
+    await user.tab()
+    expect(second).toHaveFocus()
+    await user.keyboard("{Enter}")
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("contact-2")
   })
 
   it("Escape key triggers onClose", () => {
@@ -234,7 +256,7 @@ describe("ForwardModal", () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it("disables listbox and items during isForwarding", () => {
+  it("disables destination buttons during isForwarding", () => {
     const onSelect = vi.fn()
     render(
       <ForwardModal
@@ -246,10 +268,10 @@ describe("ForwardModal", () => {
       />
     )
 
-    const listbox = screen.getByRole("listbox")
-    expect(listbox.getAttribute("aria-busy")).toBe("true")
+    const group = screen.getByRole("group", { name: "messenger:forwardTo" })
+    expect(group.getAttribute("aria-busy")).toBe("true")
 
-    const options = screen.getAllByRole("option")
+    const options = within(group).getAllByRole("button")
     expect(options).toHaveLength(2)
 
     options.forEach((opt) => {

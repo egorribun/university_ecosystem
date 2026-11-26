@@ -135,7 +135,7 @@ export function ForwardModal({
                 ) : (
                   <div
                     className="space-y-1"
-                    role="listbox"
+                    role="group"
                     aria-label={t("messenger:forwardTo")}
                     aria-busy={isForwarding}
                   >
@@ -143,8 +143,6 @@ export function ForwardModal({
                       <m.button
                         key={contact.id}
                         type="button"
-                        role="option"
-                        aria-selected="false"
                         disabled={isForwarding}
                         whileHover={
                           prefersReducedMotion || isForwarding
