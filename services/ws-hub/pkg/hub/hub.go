@@ -2203,8 +2203,7 @@ func (h *Hub) verifyCacheInvalidationSignature(
 
 	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
 	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-		h.Logger.WarnContext(ctx, "Invalid internal NATS signature — dropping event",
-			"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
+		h.Logger.WarnContext(ctx, "Invalid internal NATS signature — dropping event")
 		h.rejectCacheInvalidation(ctx, msg)
 		return false
 	}
