@@ -249,7 +249,12 @@ class TestSuspiciousActivityEvent:
             user_id=user_uuid,
             session_id=session_uuid,
             event_type="fingerprint_mismatch",
-            details={"mismatched_fields": ["user_agent"]},
+            details={
+                "mismatched_fields": ["user_agent"],
+                "stored_hash": "prior-characteristics",
+                "current_hash": "new-characteristics",
+                "current_ip": "192.0.2.1",
+            },
             timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             severity="high",
         )
@@ -258,7 +263,10 @@ class TestSuspiciousActivityEvent:
 
         assert record["event"] == "suspicious_activity"
         assert record["user_id"] == user_uuid
-        assert record["session_id"] == session_uuid
+        assert "session_id" not in record
+        assert {"stored_hash", "current_hash", "current_ip"}.isdisjoint(record)
+        assert event.session_id == session_uuid
+        assert event.details["current_ip"] == "192.0.2.1"
         assert record["event_type"] == "fingerprint_mismatch"
         assert record["severity"] == "high"
         assert record["mismatched_fields"] == ["user_agent"]
@@ -344,6 +352,9 @@ class TestSuspiciousActivityDetector:
         assert result is not None
         assert result.event_type == "rapid_ip_change"
         assert result.severity == "medium"
+        record = result.to_log_record()
+        assert record["elapsed_seconds"] == 30
+        assert {"previous_ip", "current_ip"}.isdisjoint(record)
 
     def test_get_recent_events(self):
         detector = SuspiciousActivityDetector()

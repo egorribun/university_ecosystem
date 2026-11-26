@@ -65,14 +65,14 @@ class AuthFingerprintService:
             )
 
             if event:
-                # FIX-44-03: Log actual values for debugging header mismatches.
+                accept_language_changed = (
+                    stored_fp.accept_language != current_fp.accept_language
+                )
                 logger.warning(
-                    "Session fingerprint mismatch detected — revoking session immediately "
-                    "(stored_al=%r, current_al=%r, stored_ua_len=%d, current_ua_len=%d)",
-                    stored_fp.accept_language,
-                    current_fp.accept_language,
-                    len(stored_fp.user_agent),
-                    len(current_fp.user_agent),
+                    "Session fingerprint mismatch detected",
+                    accept_language_changed=accept_language_changed,
+                    stored_ua_len=len(stored_fp.user_agent),
+                    current_ua_len=len(current_fp.user_agent),
                     extra=event.to_log_record(),
                 )
 

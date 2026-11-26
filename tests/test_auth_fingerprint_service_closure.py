@@ -161,6 +161,7 @@ async def test_validate_fingerprint_ignores_mismatch_without_detector_event():
 @pytest.mark.asyncio
 async def test_validate_fingerprint_skips_revocation_in_development():
     service, user, session, db = _context("stored")
+    session.accept_language = "en-US"
     event = SimpleNamespace(to_log_record=lambda: {})
     detector = MagicMock()
     detector.check_fingerprint_mismatch.return_value = event
@@ -175,11 +176,20 @@ async def test_validate_fingerprint_skips_revocation_in_development():
             return_value=detector,
         ),
         patch("app.services.auth.fingerprint_service.raise_forbidden") as forbidden,
+        patch("app.services.auth.fingerprint_service.logger.warning") as warning,
     ):
         await service.validate_fingerprint(user, session, db)
 
     db.commit.assert_not_awaited()
     forbidden.assert_not_called()
+
+    warning.assert_called_once_with(
+        "Session fingerprint mismatch detected",
+        accept_language_changed=True,
+        stored_ua_len=2,
+        current_ua_len=3,
+        extra={},
+    )
 
 
 @pytest.mark.asyncio
