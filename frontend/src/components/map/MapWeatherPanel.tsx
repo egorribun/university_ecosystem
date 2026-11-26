@@ -4,7 +4,7 @@
  * Opened by clicking MapWeatherBadge. Wave 108.
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, type RefObject } from "react"
 import { AnimatePresence, m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -54,9 +54,11 @@ interface MapWeatherPanelProps {
   data: MapWeatherData
   open: boolean
   onClose: () => void
+  /** Optional boundary that also includes the panel toggle. */
+  dismissBoundaryRef?: RefObject<HTMLDivElement | null>
 }
 
-export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
+export function MapWeatherPanel({ data, open, onClose, dismissBoundaryRef }: MapWeatherPanelProps) {
   const { t } = useTranslation("map")
   // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
   // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
@@ -69,7 +71,8 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
     if (!open) return
     const handle = (e: PointerEvent) => {
       const target = e.target as Node | null
-      if (target && panelRef.current && !panelRef.current.contains(target)) {
+      const boundary = dismissBoundaryRef?.current ?? panelRef.current
+      if (target && boundary && !boundary.contains(target)) {
         onClose()
       }
     }
@@ -79,7 +82,7 @@ export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
       clearTimeout(id)
       document.removeEventListener("pointerdown", handle)
     }
-  }, [open, onClose])
+  }, [open, onClose, dismissBoundaryRef])
 
   /* ── Close on Escape ── */
   useEffect(() => {

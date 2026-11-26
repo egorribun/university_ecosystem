@@ -15,6 +15,7 @@ const hoisted = vi.hoisted(() => ({ reducedMotion: true }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => hoisted.reducedMotion }))
 
+import { MapWeatherBadge } from "@/components/map/MapWeatherBadge"
 import { MapWeatherPanel } from "@/components/map/MapWeatherPanel"
 import type { MapWeatherData } from "@/hooks/useMapWeather"
 
@@ -32,6 +33,10 @@ const WEATHER: MapWeatherData = {
     { hour: 10, temperature: 6, condition: "cloudy" },
   ],
 }
+
+vi.mock("@/hooks/useMapWeather", () => ({
+  useMapWeather: () => ({ data: WEATHER, isLoading: false }),
+}))
 
 const baseProps = { data: WEATHER, open: true, onClose: vi.fn() }
 
@@ -55,6 +60,30 @@ describe("MapWeatherPanel", () => {
     expect(screen.getByText("weather.hourlyForecast")).toBeInTheDocument()
     expect(screen.getByText("09")).toBeInTheDocument()
     expect(screen.getByText("10")).toBeInTheDocument()
+  })
+
+  it("lets the weather badge toggle the panel closed without an early outside dismissal", () => {
+    vi.useFakeTimers()
+    try {
+      render(<MapWeatherBadge />)
+      const badge = screen.getByRole("button", { name: "weather.ariaLabel" })
+      fireEvent.click(badge)
+      expect(badge).toHaveAttribute("aria-expanded", "true")
+      act(() => vi.runOnlyPendingTimers())
+
+      fireEvent.pointerDown(badge)
+      expect(badge).toHaveAttribute("aria-expanded", "true")
+      fireEvent.click(badge)
+      expect(badge).toHaveAttribute("aria-expanded", "false")
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+      fireEvent.click(badge)
+      act(() => vi.runOnlyPendingTimers())
+      fireEvent.pointerDown(document.body)
+      expect(badge).toHaveAttribute("aria-expanded", "false")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("fires onClose from the close button", async () => {
