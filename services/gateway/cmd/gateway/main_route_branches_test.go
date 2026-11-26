@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/middleware"
+	"github.com/university-ecosystem/services/pkg/logging"
 )
 
 const routeBranchJWTSecret = "route-branch-test-secret-at-least-32-chars-long" // #nosec G101 -- test-only JWT signing secret // pragma: allowlist secret
@@ -372,6 +373,42 @@ func TestSetupRouter_WSProxyErrorHandlerReturnsBadGateway(t *testing.T) {
 	})
 
 	assert.Equal(t, http.StatusBadGateway, response.StatusCode)
+}
+
+func TestSetupRouter_ProxyErrorsKeepPathsOutOfLogs(t *testing.T) {
+	var logs strings.Builder
+	mr := miniredis.RunT(t)
+	cfg := &config.Config{
+		BackendURL:         "http://127.0.0.1:1",
+		WsHubURL:           "http://127.0.0.1:1",
+		JWTSecret:          routeBranchJWTSecret,
+		AllowedOrigins:     []string{"http://localhost"},
+		RedisURL:           "redis://" + mr.Addr(),
+		RevocationRedisURL: "redis://" + mr.Addr(),
+		RateLimitRPS:       100,
+		RateLimitBurst:     200,
+	}
+	lifecycle := &routerLifecycle{}
+	t.Cleanup(func() { assert.NoError(t, lifecycle.Close()) })
+	router, err := setupRouter(cfg, logging.NewJSONLogger(&logs, nil), nil, nil, t.Context(), lifecycle)
+	require.NoError(t, err)
+
+	for _, tc := range []struct{ name, path, message string }{
+		{"backend image", "/api/v1/img/avatars/example-account-avatar.webp", "Proxy error"},
+		{"websocket hub", "/ws/example-socket-route", "WS Hub Proxy error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs.Reset()
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, nil))
+
+			assert.Equal(t, http.StatusBadGateway, rec.Code)
+			assert.Contains(t, logs.String(), tc.message)
+			assert.Contains(t, logs.String(), `"error_type":"*net.OpError"`)
+			assert.NotContains(t, logs.String(), tc.path)
+			assert.NotContains(t, logs.String(), `"err":`)
+		})
+	}
 }
 
 func TestSetupRouter_WSTicketUsesAuthenticatedBackendRoute(t *testing.T) {
