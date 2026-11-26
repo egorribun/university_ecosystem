@@ -250,6 +250,26 @@ describe("schedule Enter ownership", () => {
     expect(actions.opened).toEqual([])
     expect(screen.getByLabelText("Active dialog")).toHaveTextContent("closed")
   })
+  it("keeps schedule shortcuts from moving focus out of another dialog", async () => {
+    const { user, actions } = await renderSchedule({
+      children: (
+        <section role="dialog" aria-label="Notifications" aria-modal="false">
+          <button type="button">Mark all as read</button>
+        </section>
+      ),
+    })
+    const notificationsButton = within(
+      screen.getByRole("dialog", { name: "Notifications" })
+    ).getByRole("button", { name: "Mark all as read" })
+    await user.click(notificationsButton)
+    await user.keyboard("e{Delete}?{ArrowRight}{Enter}")
+
+    expect(notificationsButton).toHaveFocus()
+    expect(actions.shortcuts).toEqual([])
+    expect(actions.opened).toEqual([])
+    expect(screen.getByLabelText("Grid selection")).toHaveTextContent("none")
+  })
+
   it("retains non-Enter shortcuts from focused button", async () => {
     const { user, actions } = await renderSchedule()
     await user.tab()
