@@ -357,7 +357,7 @@ export default function NotificationsBell() {
                             )}
                           >
                             <a
-                              href={n.link || "#"}
+                              href={n.link || (n.read ? undefined : "#")}
                               aria-disabled={!n.read && isLoading}
                               onClick={(e) => {
                                 if (!n.read && isLoading) {

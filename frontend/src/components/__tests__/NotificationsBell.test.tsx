@@ -569,6 +569,8 @@ describe("NotificationsBell", () => {
     const state = baseState()
     const markRead = vi.fn(() => new Promise<void>(() => undefined))
     state.markRead = markRead
+    state.hasMore = true
+    state.nextCursor = "next-page"
     state.data = [
       {
         id: "chat-1",
@@ -604,11 +606,17 @@ describe("NotificationsBell", () => {
     const chatLink = screen.getByText("Unread chat").closest("a")!
     const scheduleLink = screen.getByText("Unread reminder").closest("a")!
     const readLink = screen.getByText("Read update").closest("a")!
+    const markButtons = screen.getAllByTitle("Mark as read")
+    expect(markButtons).toHaveLength(2)
+    markButtons[1]!.focus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Load more" })).toHaveFocus()
     expect(chatLink).toHaveAttribute("href", "#")
     expect(chatLink).toHaveClass("flex", "gap-3", "cursor-default", "[@media(hover:none)]:pr-10")
     expect(scheduleLink).toHaveAttribute("href", "/schedule")
     expect(scheduleLink).toHaveClass("cursor-pointer")
-    expect(readLink).toHaveAttribute("href", "#")
+    expect(readLink).not.toHaveAttribute("href")
+    expect(screen.queryByRole("link", { name: /Read update/ })).not.toBeInTheDocument()
     expect(readLink).toHaveClass("cursor-default")
     expect(readLink).not.toHaveClass("[@media(hover:none)]:pr-10")
 
@@ -671,8 +679,6 @@ describe("NotificationsBell", () => {
     fireEvent.click(screen.getByText("Read update"))
     expect(markRead).toHaveBeenCalledTimes(3)
 
-    const markButtons = screen.getAllByTitle("Mark as read")
-    expect(markButtons).toHaveLength(2)
     expect(markButtons[0]).toHaveClass(
       "absolute",
       "top-2",
