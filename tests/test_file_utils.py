@@ -10,6 +10,7 @@ Coverage targets:
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -205,19 +206,23 @@ async def test_quarantine_payload_error_does_not_log_rejected_bytes(caplog):
 
 
 @pytest.mark.asyncio
-async def test_rejected_attachment_stays_rejected_when_quarantine_quota_is_unavailable():
+async def test_rejected_attachment_stays_rejected_when_quarantine_quota_is_unavailable(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     import io
 
     from fastapi import HTTPException, UploadFile
+    from starlette.datastructures import Headers
 
     from app.services.quarantine import QuarantineStoreUnavailable
     from app.utils.files import save_attachment
 
     payload = b"not a pdf"
+    private_suffix = str(uuid4())
     upload = UploadFile(
-        filename="report.pdf",
+        filename=f"report.{private_suffix}",
         file=io.BytesIO(payload),
-        headers={"content-type": "application/pdf"},
+        headers=Headers({"content-type": "application/pdf"}),
     )
     with (
         patch("app.utils.files.detect_mime_type", return_value="text/plain"),
@@ -238,6 +243,9 @@ async def test_rejected_attachment_stays_rejected_when_quarantine_quota_is_unava
 
     assert exc.value.status_code == 415
     service_factory.return_value.store.assert_awaited_once()
+    assert private_suffix not in caplog.text
+    assert "QuarantineStoreUnavailable" in caplog.text
+    assert "'filename_extension_present': True" in caplog.text
 
 
 @pytest.mark.asyncio

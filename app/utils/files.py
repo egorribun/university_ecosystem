@@ -447,10 +447,12 @@ async def save_attachment(
     data = await _read_limited(upload, limit, locale=locale)
 
     detected_type = detect_mime_type(data) or ""
+    # A filename suffix can contain arbitrary text, not just a format name.
+    has_filename_extension = bool(ext_without_dot)
     metadata: dict[str, Any] = {
         "declared_type": declared_type or None,
         "detected_type": detected_type or None,
-        "filename_extension": ext_without_dot or None,
+        "filename_extension_present": has_filename_extension,
         "allowed_types": sorted(allowed_types) if allowed_types else None,
         "allowed_extensions": sorted(allowed_exts) if allowed_exts else None,
     }
