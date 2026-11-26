@@ -281,8 +281,9 @@ async def test_get_transformed_image_redis_get_error():
             )
             assert data == b"original-bytes"
             assert mime == "image/png"
-            mock_warn.assert_called_once()
-            assert "Redis cache read failed" in mock_warn.call_args[0][0]
+            mock_warn.assert_called_once_with(
+                "Redis cache read failed (%s)", "ConnectionError"
+            )
 
 
 @pytest.mark.anyio
@@ -306,17 +307,26 @@ async def test_get_transformed_image_redis_set_error():
             )
             assert mime == "image/webp"
             mock_redis.set.assert_awaited_once()
-            mock_warn.assert_called_once()
-            assert "Redis cache write failed" in mock_warn.call_args[0][0]
+            mock_warn.assert_called_once_with(
+                "Redis cache write failed (%s)", "OSError"
+            )
 
 
 @pytest.mark.anyio
 async def test_get_transformed_image_storage_errors():
     mock_backend = AsyncMock(spec=StorageBackend)
     mock_backend.read_file.side_effect = OSError("Disk read error")
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
 
-    with pytest.raises(ValueError, match="Could not load image"):
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.services.image_proxy.logger.error") as log_error,
+        pytest.raises(ValueError, match="Could not load image"),
+    ):
         await get_transformed_image(mock_backend, "/static/avatar.png")
+
+    log_error.assert_called_once_with("Failed to fetch source image (%s)", "OSError")
 
 
 @pytest.mark.anyio
@@ -357,16 +367,19 @@ async def test_get_transformed_image_pil_error_fallback():
     mock_backend = AsyncMock(spec=StorageBackend)
     mock_backend.read_file.return_value = b"corrupted-image-data"
 
-    with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
-        with patch("app.services.image_proxy.logger.error") as mock_err:
-            data, mime = await get_transformed_image(
-                mock_backend, "/static/avatar.png", width=10, format_preference="webp"
-            )
-            # Should fall back to returning original corrupted bytes and guessed mime
-            assert data == b"corrupted-image-data"
-            assert mime == "image/png"
-            mock_err.assert_called_once()
-            assert "Failed to transform image" in mock_err.call_args[0][0]
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.services.image_proxy.logger.error") as log_error,
+    ):
+        data, mime = await get_transformed_image(
+            mock_backend, "/static/avatar.png", width=10, format_preference="webp"
+        )
+
+    assert data == b"corrupted-image-data"
+    assert mime == "image/png"
+    log_error.assert_called_once_with(
+        "Failed to transform image (%s)", "UnidentifiedImageError"
+    )
 
 
 @pytest.mark.anyio

@@ -312,11 +312,14 @@ async def test_proxy_image_maps_storage_errors_to_http_errors():
             "app.api.images.get_transformed_image",
             new=AsyncMock(side_effect=RuntimeError("backend down")),
         ),
+        patch("app.api.images.logger") as log,
     ):
         with pytest.raises(HTTPException) as internal:
             await proxy_image(_request(), "broken.jpg", w=None, accept=None)
 
     assert internal.value.status_code == 500
+    log.error.assert_called_once_with("Image proxy error (%s)", "RuntimeError")
+    log.exception.assert_not_called()
 
 
 @pytest.mark.asyncio

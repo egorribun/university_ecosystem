@@ -167,8 +167,8 @@ async def proxy_image(
     except ValueError:
         # Often file not found in storage
         raise_not_found("image", "en", resource_id=path)
-    except Exception:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500 (reviewed TD-27-04)
-        logger.exception("Image proxy error for %s", path)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500 (reviewed TD-27-04)
+        logger.error("Image proxy error (%s)", type(exc).__name__)
         raise_http_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "errors.common.internal_error", "en"
         )
