@@ -7,14 +7,10 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
 import app.models as models
 from app.api.deps import get_current_user_from_dishka
+from app.api.deps.etag import _ensure_vary_headers
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
-
-# P2-fix (audit 2026-02-26): import _ensure_vary_header from its defining module
-# (app.core.middleware) instead of via app.main, which would create a circular
-# dependency: stats → main → routers → stats.
-from app.core.middleware import _ensure_vary_header
 from app.core.ratelimit import sensitive_route_limit
 from app.cqrs.queries import GetStatsHandler, GetStatsQuery
 from app.deps.cache import etag_matches, format_etag
@@ -25,7 +21,8 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 def _set_stats_headers(
     response: Response, *, locale: str, etag: str | None = None
 ) -> None:
-    _ensure_vary_header(response, "Accept-Language")
+    # The private cache is browser-local, not account-local.
+    _ensure_vary_headers(response, "Accept-Language", "Cookie", "Authorization")
     response.headers["Content-Language"] = locale
     # P3-fix (audit 2026-02-26): compute Cache-Control lazily so that unit tests
     # that override settings.stats_cache_ttl_seconds see the correct value instead
