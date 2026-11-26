@@ -559,6 +559,58 @@ describe("NewChatModal", () => {
     })
   })
 
+  it("does not leave a previous match selectable as the search input changes", async () => {
+    const onSelect = vi.fn()
+    mocks.apiGet.mockImplementation(async (path: string) => ({
+      data: path.endsWith("full_name=first")
+        ? [{ id: "first", full_name: "First Match" }]
+        : [{ id: "next", full_name: "Next Match" }],
+    }))
+    render(<NewChatModal open onClose={() => {}} onSelect={onSelect} />, { wrapper })
+    const input = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(input, { target: { value: "first" } })
+    expect(await screen.findByRole("option", { name: "First Match" })).toBeInTheDocument()
+
+    input.focus()
+    fireEvent.change(input, { target: { value: "next" } })
+    expect(screen.queryByRole("option", { name: "First Match" })).not.toBeInTheDocument()
+    expect(fireEvent.keyDown(input, { key: "ArrowDown" })).toBe(true)
+    expect(input).toHaveFocus()
+    expect(onSelect).not.toHaveBeenCalled()
+
+    const current = await screen.findByRole("option", { name: "Next Match" })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(current).toHaveFocus()
+    fireEvent.click(current)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("next")
+
+    fireEvent.change(input, { target: { value: "" } })
+    expect(screen.queryByRole("option")).not.toBeInTheDocument()
+  })
+
+  it("does not announce an empty result before the visible query is sent", async () => {
+    render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, { wrapper })
+    const input = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+
+    fireEvent.change(input, { target: { value: "nobody" } })
+    expect(screen.queryByText("messenger:noUsersFound")).not.toBeInTheDocument()
+    expect(screen.getByRole("status", { name: "messenger:loading.users" })).toBeInTheDocument()
+    expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    expect(mocks.apiGet).toHaveBeenCalledExactlyOnceWith("/users?limit=10&full_name=nobody")
+  })
+
+  it("hides an earlier query's retry action as the search input changes", async () => {
+    mocks.apiGet.mockRejectedValueOnce(new Error("offline"))
+    render(<NewChatModal open onClose={() => {}} onSelect={() => {}} />, { wrapper })
+    const input = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(input, { target: { value: "failed" } })
+    expect(await screen.findByRole("button", { name: "messenger:error.retry" })).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: "valid" } })
+    expect(screen.queryByRole("button", { name: "messenger:error.retry" })).not.toBeInTheDocument()
+    expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+  })
+
   it("consumes the Escape key it handles", () => {
     const onClose = vi.fn()
     render(<NewChatModal open onClose={onClose} onSelect={() => {}} />, { wrapper })
