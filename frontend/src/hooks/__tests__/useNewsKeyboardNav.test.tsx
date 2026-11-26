@@ -82,6 +82,35 @@ describe("useNewsKeyboardNav", () => {
     expect(scrollSpy).not.toHaveBeenCalled()
   })
 
+  it.each([
+    { name: "Ctrl", init: { ctrlKey: true } },
+    { name: "Meta", init: { metaKey: true } },
+    { name: "Alt", init: { altKey: true } },
+    { name: "IME composition", init: { isComposing: true } },
+    { name: "an event already handled by a descendant", init: {}, consumed: true },
+  ])("leaves J to $name without moving the active news card", ({ init, consumed }) => {
+    const { result } = renderHook(() => useNewsKeyboardNav(ITEMS))
+    const card = document.body.appendChild(document.createElement("div"))
+    const scroll = vi.fn()
+    card.scrollIntoView = scroll
+    act(() => result.current.registerRef(0, card))
+
+    if (consumed) card.addEventListener("keydown", (event) => event.preventDefault())
+    const event = new KeyboardEvent("keydown", {
+      key: "j",
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    })
+    act(() => {
+      card.dispatchEvent(event)
+    })
+
+    expect(event.defaultPrevented).toBe(Boolean(consumed))
+    expect(result.current.activeIndex).toBe(-1)
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
   // -------------------------------------------------------------------------
   // typing-guard (lines 36-39)
   // -------------------------------------------------------------------------
