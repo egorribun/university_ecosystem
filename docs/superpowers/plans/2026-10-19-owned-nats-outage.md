@@ -1,7 +1,7 @@
 # Owned NATS acceptance implementation plan
 
 > **Status (2026-11-26): active.** The CLI (`scripts/owned_nats_outage_cli.py`, `scripts.live_stand nats-outage`) and the PR-gated workflow step "Run owned NATS outage acceptance" in `.github/workflows/live-acceptance.yml` now exist. Notes below that call them disabled are dated progress entries. Tasks 3 and 4 (recorded live acceptance) remain open.
-
+>
 > **For agentic workers:** Use the accepted spec and this plan task by task. Root owns GitHub publication and evidence review. No runtime enablement from capability tests alone.
 
 **Goal:** Prove one exact message/outbox event survives a bounded NATS-only outage in the existing owned PR Core stand and reaches existing broker storage after restoration.
