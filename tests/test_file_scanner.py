@@ -462,13 +462,20 @@ async def test_scan_for_malware_ignores_retired_flag_in_production():
         mock_settings.event_file_scanner_backend = "clamd"
         mock_settings.event_file_scanner_allow_on_unavailable = True
         mock_settings.environment = "production"
-        with patch(
-            "app.services.file_scanner._scan_bytes_with_clamd",
-            side_effect=FileScannerUnavailableError("clamd down"),
+        with (
+            patch(
+                "app.services.file_scanner._scan_bytes_with_clamd",
+                side_effect=FileScannerUnavailableError("synthetic scanner details"),
+            ),
+            patch("app.services.file_scanner.logger.error") as log_error,
+            pytest.raises(HTTPException) as exc_info,
         ):
-            with pytest.raises(HTTPException) as exc_info:
-                await scan_for_malware(b"data")
-            assert exc_info.value.status_code == 503
+            await scan_for_malware(b"data")
+
+        assert exc_info.value.status_code == 503
+        log_error.assert_called_once_with(
+            "File scanner unavailable", error_type="FileScannerUnavailableError"
+        )
 
 
 @pytest.mark.anyio
@@ -521,9 +528,8 @@ async def test_scan_for_malware_quarantine_narrowed_errors():
                         quarantine_handler=mock_quarantine_fail,
                     )
                 # Should log the warning but still propagate the infection HTTP exception
-                mock_warn.assert_called_once()
-                assert (
-                    "Failed to quarantine infected payload" in mock_warn.call_args[0][0]
+                mock_warn.assert_called_once_with(
+                    "Failed to quarantine infected payload", error_type="OSError"
                 )
 
 

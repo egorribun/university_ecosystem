@@ -273,7 +273,7 @@ async def scan_for_malware(
             locale or "en",
         )
     except FileScannerUnavailableError as exc:
-        logger.error("File scanner unavailable: %s", exc)
+        logger.error("File scanner unavailable", error_type=type(exc).__name__)
         raise_http_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "errors.files.scanner_unavailable",
@@ -297,7 +297,8 @@ async def scan_for_malware(
                 ConnectionError,
             ) as exc:  # RZ-22-01: narrowed — storage errors during quarantine
                 logger.warning(
-                    "Failed to quarantine infected payload: %s", exc, exc_info=True
+                    "Failed to quarantine infected payload",
+                    error_type=type(exc).__name__,
                 )
         raise_validation_error(
             "errors.files.infected",
