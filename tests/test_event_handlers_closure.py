@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -59,7 +59,7 @@ async def test_generate_news_embedding_returns_when_news_is_missing(monkeypatch)
     db.commit.assert_not_awaited()
 
 
-def _message(sender_id, chat_id):
+def _message(sender_id: UUID, chat_id: UUID) -> SimpleNamespace:
     return SimpleNamespace(
         chat_id=chat_id,
         sender_id=sender_id,
@@ -164,3 +164,40 @@ async def test_attachment_cleanup_handler_ignores_empty_url_list():
         )
 
     service.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason",
+    ["message_missing", "chat_mismatch", "sender_missing", "chat_missing"],
+)
+async def test_message_notification_failure_logs_only_its_reason(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, reason: str
+) -> None:
+    message_id, chat_id, other_chat_id, sender_id = (uuid4() for _ in range(4))
+    db = AsyncMock()
+    message = _message(
+        sender_id, other_chat_id if reason == "chat_mismatch" else chat_id
+    )
+    db.get.side_effect = [
+        None if reason == "message_missing" else message,
+        None if reason == "sender_missing" else SimpleNamespace(id=sender_id),
+    ]
+    _configure_message_rls_mock(db)
+    monkeypatch.setattr(
+        "app.services.event_handlers.async_session", lambda: _session(db)
+    )
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=None)
+    with (
+        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
+        patch("app.services.chat.notification_service.ChatNotificationService"),
+    ):
+        await handle_message_sent(
+            MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
+        )
+
+    for identifier in (message_id, chat_id, other_chat_id, sender_id):
+        assert str(identifier) not in caplog.text
+    assert "chat_message_notify_failed" in caplog.text
+    assert reason in caplog.text

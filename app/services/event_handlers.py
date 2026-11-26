@@ -372,12 +372,10 @@ async def handle_message_sent(event: MessageSent) -> None:
         # 1. Fetch the message.
         message = await db.get(models.Message, event.message_id)
         if not message:
-            logger.error("Message %s not found for notification", event.message_id)
+            logger.error("chat_message_notify_failed", reason="message_missing")
             return
         if message.chat_id != event.chat_id:
-            logger.error(
-                "Message %s does not belong to its event chat", event.message_id
-            )
+            logger.error("chat_message_notify_failed", reason="chat_mismatch")
             return
 
         # 1b. Fetch the sender and profile EXPLICITLY. Message.sender is lazy="noload",
@@ -391,11 +389,7 @@ async def handle_message_sent(event: MessageSent) -> None:
             populate_existing=True,
         )
         if sender is None:
-            logger.error(
-                "Sender %s not found for message %s",
-                message.sender_id,
-                event.message_id,
-            )
+            logger.error("chat_message_notify_failed", reason="sender_missing")
             return
         # Attach the loaded sender so serialize_message includes the sender record
         # in the new_message broadcast (name/avatar on the recipient's live bubble)
@@ -406,7 +400,7 @@ async def handle_message_sent(event: MessageSent) -> None:
         # 2. Fetch chat with participants.
         chat = await repo.get_by_id(event.chat_id)
         if not chat:
-            logger.error("Chat %s not found for notification", event.chat_id)
+            logger.error("chat_message_notify_failed", reason="chat_missing")
             return
 
         # 2b. Wave 207 — if this message is a reply, load the replied-to message
