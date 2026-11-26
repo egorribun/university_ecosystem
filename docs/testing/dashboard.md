@@ -1,6 +1,7 @@
 # Quality dashboard
 
-The quality dashboard is no longer committed to this repository. The scheduled
+The rendered quality dashboard is not committed to this repository; this file only says where it is
+published. The scheduled
 **Quality History** workflow (`.github/workflows/quality-history.yml`, protected
 `main` only) renders it from the certified CI quality manifests of recent
 successful runs. The live dashboard is published in two places:

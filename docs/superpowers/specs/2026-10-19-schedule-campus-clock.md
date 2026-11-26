@@ -1,5 +1,7 @@
 # Schedule calendar and campus-clock corrections
 
+> **Status (2026-11-26): completed.** The audit documents record AUD-003, AUD-004 and AUD-006 as fixed and accepted.
+
 Date: 2026-10-19 (Europe/Istanbul). Scope: AUD-003, AUD-004 and AUD-006 from the October audit. Source review: 7b340e78c397cc908ecd0eafe0d4c2c5cd7fd168. Tests-first work on egorribun through GitHub only; implementation and hosted acceptance remain separate.
 
 ## Outcomes

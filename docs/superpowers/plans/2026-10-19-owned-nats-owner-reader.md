@@ -1,5 +1,7 @@
 # Existing signed-owner file boundary
 
+> **Status (2026-11-26): completed slice** of the owned NATS outage plan (pinned owner-file checks in `scripts/live_nats_transport.py`).
+
 Date: 2026-10-19. GitHub plugin only, branch egorribun, PR1306.
 
 The pure supplied-byte parser has 66 verified cases. The first reader slice introduced an unavailable seam and 24 existing-file tests. After observed RED it was implemented; all 24 passed on e5588a0, job 118329557122, along with all 66 parser cases. This remains a read-only metadata boundary, not runtime admission.

@@ -1,5 +1,7 @@
 # UI lifecycle and transport reconciliation
 
+> **Status (2026-11-26): paused at the owner's request** (see the end of this file). The opening list of open items is dated; later sections of this file accept most of them.
+
 Date: 2026-10-19 UTC. GitHub plugin only, branch egorribun, PR1306.
 
 ## Accepted original boundaries

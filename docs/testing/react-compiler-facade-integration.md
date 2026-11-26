@@ -1,5 +1,10 @@
 # React Compiler facade integration evidence
 
+> **Status (2026-11-26): activated.** `frontend/package.json` declares
+> `@university-ecosystem/react-compiler-zod-compat` and overrides `zod` with it
+> ([ADR-048](../adr/ADR-048-react-compiler-schema-compatibility.md)). Sections below that call the facade
+> staged or not activated are dated evidence entries.
+
 ## React Compiler integration at the 0f865 evidence checkpoint (2026-10-26)
 
 R7 on the guarded 23-path source set passed 84/85 Node contract tests, then failed on a stale assertion requiring explicit COPY despite builder inheritance from FROM deps; audits were not reached. R8 VerifyInstalled corrected the assertion and passed all six stages, including 85/85 Node contracts and successful npm and policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci; it preserved the installed tree, and R8 postflight matched all 23 guarded paths and 14 controls with certain cleanup. This is bounded installed-tree evidence, not fresh-install, normal npm CI, frontend or hosted acceptance.

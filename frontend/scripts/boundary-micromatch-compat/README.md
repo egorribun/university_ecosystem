@@ -1,5 +1,10 @@
 # Boundary micromatch compatibility adapter
 
+> **Status (2026-11-26): unused.** `eslint-plugin-boundaries@7.4.4` and `@boundaries/elements@3.3.4`
+> depend on picomatch directly, and no package in `frontend/package-lock.json` depends on `micromatch`.
+> The scoped override key below still names 7.2.0. Removing the adapter, its devDependency, override,
+> test and knip entry is a separate change, because it rebinds the frontend manifest projection.
+
 This private, repository-owned package supplies only the three micromatch APIs
 used by `eslint-plugin-boundaries@7.2.0` and its `@boundaries/elements@3.1.1`
 dependency: `isMatch`, `capture`, and `makeRe`. It is not a general replacement

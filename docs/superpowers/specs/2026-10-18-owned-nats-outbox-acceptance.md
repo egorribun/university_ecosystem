@@ -1,5 +1,7 @@
 # Owned NATS send-message acceptance
 
+> **Status (2026-11-26): active.** The workflow step runs the outage after the Core E2E step whatever its outcome (not cancelled, stand started), not only after a successful E2E as stated below. Hosted acceptance is not recorded yet.
+
 Date: 2026-10-18. Scope: owner-approved, single NATS-only outage in the existing disposable PR Core stand. Design source: [7444e5c](https://github.com/egorribun/university_ecosystem/commit/7444e5c298ae769abe0b75a25248f2fd71ad1686). Implementation and hosted acceptance remain separate requirements.
 
 ## Outcome and boundaries

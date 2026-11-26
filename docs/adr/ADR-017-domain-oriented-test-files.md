@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded and completed (2026-08-17)
+Accepted and completed (2026-08-17)
 
 ## Context
 
@@ -34,4 +34,4 @@ documentation now reference those names.
 - Historical audit records may retain chronological terminology as immutable
   provenance, but active test paths must remain domain-oriented.
 - Tests that span several components use the narrowest stable contract name.
-- Repository quality checks reject regressions to chronological test naming.
+- Review keeps new test files domain-oriented; no automated check enforces the naming.
