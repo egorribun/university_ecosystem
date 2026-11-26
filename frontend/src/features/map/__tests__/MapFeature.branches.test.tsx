@@ -140,8 +140,8 @@ const searchProps = vi.hoisted(() => ({
   current: null as ComponentProps<typeof RealMapSearchBar> | null,
   renderActual: false,
 }))
-vi.mock("@/components/map/MapSearchBar", async (importOriginal) => {
-  const { MapSearchBar } = await importOriginal<typeof import("@/components/map/MapSearchBar")>()
+vi.mock(import("@/components/map/MapSearchBar"), async (importOriginal) => {
+  const { MapSearchBar } = await importOriginal()
   return {
     MapSearchBar: (props: ComponentProps<typeof RealMapSearchBar>) => {
       searchProps.current = props
