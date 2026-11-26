@@ -1839,13 +1839,12 @@ func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSeq
 	var wsMsg Message
 	if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
 		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS chat message dropped",
-			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			"size", len(msg.Data), "error_type", fmt.Sprintf("%T", err))
 		safeAck(msg)
 		return
 	}
 	if !validateLiveChatBinding(msg.Subject, &wsMsg) {
-		h.Logger.WarnContext(ctx, "ws-hub: chat subject/envelope/payload room mismatch",
-			"subject", msg.Subject, "room", wsMsg.Room)
+		h.Logger.WarnContext(ctx, "ws-hub: chat subject/envelope/payload room mismatch")
 		h.terminateChatMessage(ctx, msg, "room binding mismatch")
 		return
 	}
@@ -1855,7 +1854,7 @@ func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSeq
 	audienceUserIDs, audiencePresent, audienceErr := decodeChatAudience(msg.Data)
 	if audienceErr != nil {
 		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS chat audience dropped",
-			"subject", msg.Subject, "room", wsMsg.Room, "err", audienceErr)
+			"size", len(msg.Data), "error_type", fmt.Sprintf("%T", audienceErr))
 		if requireSequence {
 			h.rejectUndeliverableSequencedChat(ctx, msg, &wsMsg, "invalid audience")
 		} else {
