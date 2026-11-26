@@ -184,6 +184,38 @@ async def test_add_schedule_success_and_domain_conflict(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("role", (UserRole.ADMIN, UserRole.TEACHER))
+async def test_add_schedule_resolves_admin_authority_before_writing(monkeypatch, role):
+    request = _Request()
+    user = _user(role)
+    ensure_admin = AsyncMock()
+    monkeypatch.setattr(schedule, "ensure_admin", ensure_admin)
+
+    async def execute(command):
+        if role == UserRole.ADMIN:
+            ensure_admin.assert_awaited_once()
+            _, checked_user, checked_request = ensure_admin.await_args.args
+            assert checked_user is user
+            assert checked_request is request
+        else:
+            ensure_admin.assert_not_awaited()
+        assert command.actor_id == user.id
+        return _schedule_out()
+
+    bus = SimpleNamespace(execute=AsyncMock(side_effect=execute))
+    data = schemas.ScheduleCreate(
+        group_id=uuid.uuid4(),
+        subject="Math",
+        weekday="monday",
+        start_time="2026-07-23T10:00:00Z",
+        end_time="2026-07-23T11:00:00Z",
+    )
+
+    result = await schedule.add_schedule(data, request, bus, user)
+    assert result.subject == "Math"
+
+
+@pytest.mark.asyncio
 async def test_get_schedule_full_and_not_modified_responses(monkeypatch):
     monkeypatch.setattr(schedule, "resolve_locale", lambda **kwargs: "en")
     monkeypatch.setattr(

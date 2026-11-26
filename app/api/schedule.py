@@ -61,9 +61,12 @@ async def add_schedule(
     request: Request,
     command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    if user.role == UserRole.ADMIN:
+        await ensure_admin(checker, user, request)
 
     from app.api.validation import raise_conflict
     from app.core.exceptions.domain import BusinessRuleViolation
