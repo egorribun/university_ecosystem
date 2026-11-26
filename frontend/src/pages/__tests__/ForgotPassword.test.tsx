@@ -423,7 +423,9 @@ describe("ForgotPassword behaviour details", () => {
     expect(address.parentElement).toHaveTextContent(
       toPlainText(tAuth("forgot.success", { email: "user@example.com" }))
     )
-    expect(screen.getByText(tAuth("forgot.successHint"))).toBeInTheDocument()
+    const hint = screen.getByText(tAuth("forgot.successHint"))
+    expect(hint).toHaveClass("text-text-secondary")
+    expect(hint).not.toHaveClass("opacity-strong")
     expect(screen.getByRole("link", { name: tAuth("actions.backToLogin") })).toBeInTheDocument()
     expect(screen.queryByText(tAuth("forgot.subtitle"))).not.toBeInTheDocument()
   })

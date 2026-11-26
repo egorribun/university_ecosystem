@@ -147,7 +147,7 @@ export default function ForgotPassword() {
                         }}
                       />
                     </p>
-                    <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-strong">
+                    <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">
                       {t("auth:forgot.successHint")}
                     </p>
                   </div>
