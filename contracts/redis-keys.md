@@ -1,7 +1,8 @@
 # Redis Key Contracts
 
 This document is the authoritative registry for **every Redis key pattern** used
-across the university-ecosystem services. It serves as an explicit contract
+across the university-ecosystem services. Historical entries are identified
+separately from the active MVP contract. It serves as an explicit contract
 between the Python backend, Go gateway, Go ws-hub, file processor, and any future
 service that shares the Redis instance.
 
@@ -24,7 +25,7 @@ service that shares the Redis instance.
 | `{nonce}`        | OAuth or processing-capability nonce |
 | `{probe_id}`     | Unique health-probe identifier         |
 | `{window_minute}`| Unix-minute rate-limit window       |
-| `{ip}`           | Request IP used by anonymous GraphQL limits |
+| `{ip}`           | Request IP |
 | `{identifier}`   | Caller-supplied progressive-delay identity |
 | `{prefix}`       | Configured cache or delay namespace |
 | `{version}`      | Cache generation/version token      |
@@ -46,13 +47,13 @@ service that shares the Redis instance.
 |-------------|-----|---------------|---------|---------|
 | `session:{jti}` | Remaining supplied session expiry (`expires_at - now`) | Python `app/auth/redis_session.py` | Python API | Active session data keyed by the JWT ID |
 | `session:v2:{jti}` | Configured `access_token_expire_minutes * 60` (currently 60 minutes by default); refreshed by `update_last_seen` | Python `app/services/auth/redis_session.py` | Python API | Active session metadata cache (v2 schema), keyed by the JWT ID |
-| `revoked:jti:{jti}` | remaining JWT lifetime; safe 24h fallback when the session key is missing or unbounded | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` via `app/auth/revocation.py`; irreversible MFA retirement migration `202608250002` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`, `app/services/auth/graphql_token_validator.py`), Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/handlers.go`), Go file processor (`cmd/file-processor/auth.go`) | Revocation list for logged-out JWTs and already-upgraded real-time sessions |
+| `revoked:jti:{jti}` | remaining JWT lifetime; safe 24h fallback when the session key is missing or unbounded | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` via `app/auth/revocation.py` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`), Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/handlers.go`), Go file processor (`cmd/file-processor/auth.go`) | Revocation list for logged-out JWTs and already-upgraded real-time sessions |
 
 **Pub/Sub channels:**
 
 | Channel | Publisher | Subscriber | Payload |
 |---------|-----------|------------|---------|
-| `session:revocations` | Python (`app/auth/redis_session.py`, `app/services/auth/redis_session.py`); irreversible MFA retirement migration `202608250002` | Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/session_revocation.go`) | `{jti}` — raw JWT ID string |
+| `session:revocations` | Python (`app/auth/redis_session.py`, `app/services/auth/redis_session.py`) | Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/session_revocation.go`) | `{jti}` — raw JWT ID string |
 
 > **Cross-service invariant (tested in `tests/integration/test_redis_contract.py`):**
 > The gateway subscribes to `session:revocations` and derives the revocation key as
@@ -175,15 +176,23 @@ It is never derived from a sliding session-cache TTL.
 
 ### GraphQL Rate Limits
 
+The following Python GraphQL keys describe retained source only. They are not
+written by the MVP deployment: FastAPI does not mount `/graphql` and the Compose
+edge does not route it to the Python backend. See
+[ADR-046](../docs/adr/ADR-046-codebase-consolidation-audit.md#deliberately-kept).
+The retained Python GraphQL token validator is likewise not an active MVP
+revocation reader. This does not describe the Go file processor's GraphQL
+runtime.
+
 | Key Pattern | TTL | Owner (write) | Readers | Purpose |
 |-------------|-----|---------------|---------|---------|
 | `gql:token_bucket:{user_id}` | `ttl` argument (current default 3600s) | Python `app/graphql/extensions.py` | Python (same module) | Authenticated GraphQL token bucket; Lua refreshes expiration on each request |
 | `gql:token_bucket:ip:{ip}` | `ttl` argument (current default 3600s) | Python `app/graphql/extensions.py` | Python (same module) | Anonymous GraphQL token bucket; Lua refreshes expiration on each request |
 | `gql:cost:{user_id}:{window_minute}` | 120s | Python `app/graphql/extensions.py` | Python (same module) | Per-user query-cost counter for a tumbling minute window |
 
-The token-bucket helper accepts a TTL argument; the current GraphQL middleware
-uses its 3600-second default. Both limit families fall back to process-local
-state when Redis is unavailable.
+The token-bucket helper accepts a TTL argument; the retained Python GraphQL
+middleware uses its 3600-second default. Both limit families fall back to
+process-local state when Redis is unavailable.
 
 ---
 
