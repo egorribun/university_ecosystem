@@ -279,6 +279,78 @@ describe("GroupInfoPanel (W211 G4)", () => {
     expect(onAddMember).toHaveBeenCalledWith("new-user")
   })
 
+  it.each(["Alice", ""])(
+    "removes actionable old member results immediately when the query changes to %j",
+    async (nextQuery) => {
+      mocks.apiGet.mockResolvedValueOnce({
+        data: [{ id: "old-user", full_name: "Nina New", avatar_url: null }],
+      })
+      mocks.apiGet.mockResolvedValue({
+        data: [
+          { id: MEMBER, full_name: "Mike Member", avatar_url: null },
+          { id: "new-user", full_name: "Alice New", avatar_url: null },
+        ],
+      })
+      const onAddMember = vi.fn()
+      render(
+        <GroupInfoPanel
+          {...baseProps}
+          onAddMember={onAddMember}
+          chat={groupChat(OWNER)}
+          currentUserId={OWNER}
+        />,
+        { wrapper }
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+      fireEvent.change(search, { target: { value: "Nina" } })
+      expect(await screen.findByRole("button", { name: "Nina New" })).toBeInTheDocument()
+
+      fireEvent.change(search, { target: { value: nextQuery } })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(1)
+      expect(screen.queryByRole("button", { name: "Nina New" })).not.toBeInTheDocument()
+      expect(screen.queryByText("messenger:noUsersFound")).not.toBeInTheDocument()
+      expect(onAddMember).not.toHaveBeenCalled()
+
+      if (nextQuery) {
+        fireEvent.click(await screen.findByRole("button", { name: "Alice New" }))
+        expect(onAddMember).toHaveBeenCalledExactlyOnceWith("new-user")
+        expect(screen.queryByRole("button", { name: "Mike Member" })).not.toBeInTheDocument()
+      }
+    }
+  )
+
+  it("does not keep a search error after changing the member query", async () => {
+    mocks.apiGet.mockRejectedValueOnce(new Error("Search unavailable"))
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(search, { target: { value: "Nina" } })
+    expect(await screen.findByRole("alert")).toHaveTextContent("messenger:error.failedToLoadUsers")
+
+    fireEvent.change(search, { target: { value: "Alice" } })
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("messenger:noUsersFound")).not.toBeInTheDocument()
+    expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+  })
+
+  it("does not report no group members found before the first search", async () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(search, { target: { value: "Nina" } })
+    expect(mocks.apiGet).not.toHaveBeenCalled()
+    expect(screen.queryByText("messenger:noUsersFound")).not.toBeInTheDocument()
+    expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+  })
+
   it.each(["N", " N ", "😀"])(
     "does not search or show empty results for one trimmed code point: %s",
     async (query) => {

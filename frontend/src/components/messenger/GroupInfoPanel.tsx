@@ -122,7 +122,11 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     },
     enabled: shouldSearchGroupUsers(open, showAddSearch, debouncedSearch),
   })
-  const addableResults = searchResults.filter((u) => !memberIds.has(String(u.id)))
+  const isCurrentSearch =
+    search === debouncedSearch && shouldSearchGroupUsers(open, showAddSearch, search)
+  const addableResults = isCurrentSearch
+    ? searchResults.filter((u) => !memberIds.has(String(u.id)))
+    : []
 
   const startRename = (currentChat: Chat) => {
     setNameDraft(currentChat.name ?? undefined)
@@ -258,7 +262,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                         <X className="size-5" aria-hidden="true" />
                       </button>
                     </div>
-                    {searchError && (
+                    {isCurrentSearch && searchError && (
                       <p
                         role="alert"
                         className="px-2 py-3 text-center text-xs font-medium text-(--error-text)"
@@ -266,10 +270,10 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                         {t("messenger:error.failedToLoadUsers")}
                       </p>
                     )}
-                    {!searchError &&
+                    {isCurrentSearch &&
+                      !searchError &&
                       !searchLoading &&
-                      addableResults.length === 0 &&
-                      Array.from(search.trim()).length >= MIN_SEARCH_LENGTH && (
+                      addableResults.length === 0 && (
                         <p className="px-2 py-3 text-center text-xs font-medium text-(--text-secondary) opacity-medium">
                           {t("messenger:noUsersFound")}
                         </p>
