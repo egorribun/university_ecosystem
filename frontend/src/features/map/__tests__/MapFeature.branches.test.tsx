@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, act, waitFor, within } from "@testing-library/react"
-import type { ComponentType, RefObject } from "react"
+import type { ComponentProps, ComponentType } from "react"
 import { Suspense } from "react"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { MapSearchBar as RealMapSearchBar } from "@/components/map/MapSearchBar"
 
 /* ──────────────────────────────────────────────────────────────────────────
  * MapFeature.branches.test.tsx — drives the uncovered orchestration handlers
@@ -136,29 +137,26 @@ vi.mock("@/contexts/AppShellContext", () => ({
 
 /* Stub MapSearchBar so its onSelectRoom (→ navigateToRoom) is fireable. */
 const searchProps = vi.hoisted(() => ({
-  current: null as Record<string, unknown> | null,
+  current: null as ComponentProps<typeof RealMapSearchBar> | null,
+  renderActual: false,
 }))
-vi.mock("@/components/map/MapSearchBar", () => ({
-  MapSearchBar: (props: Record<string, unknown>) => {
-    searchProps.current = props
-    return (
-      <>
-        <input
-          data-testid="search-input"
-          ref={props.searchInputRef as RefObject<HTMLInputElement>}
-        />
-        <button
-          data-testid="search-room"
-          onClick={() =>
-            (props.onSelectRoom as (l: string, f: number, r: string) => void)("ГУК", 2, "ГУК-201")
-          }
-        >
-          search-room
-        </button>
-      </>
-    )
-  },
-}))
+vi.mock("@/components/map/MapSearchBar", async (importOriginal) => {
+  const { MapSearchBar } = await importOriginal<typeof import("@/components/map/MapSearchBar")>()
+  return {
+    MapSearchBar: (props: ComponentProps<typeof RealMapSearchBar>) => {
+      searchProps.current = props
+      if (searchProps.renderActual) return <MapSearchBar {...props} />
+      return (
+        <>
+          <input data-testid="search-input" ref={props.searchInputRef} />
+          <button data-testid="search-room" onClick={() => props.onSelectRoom("ГУК", 2, "ГУК-201")}>
+            search-room
+          </button>
+        </>
+      )
+    },
+  }
+})
 
 import { MapFeature } from "@/features/map/MapFeature"
 
@@ -184,6 +182,7 @@ function getSelectBuilding() {
 }
 
 beforeEach(() => {
+  searchProps.renderActual = false
   mapProps.current = null
   ksOptions.current = null
   searchProps.current = null
@@ -549,6 +548,22 @@ describe("MapFeature — Escape key + locale fallback", () => {
       fireEvent.keyDown(window, { key: "Escape" })
     })
     expect(screen.queryByRole("button", { name: "sidebar.close" })).not.toBeInTheDocument()
+  })
+
+  it("dismisses real search suggestions without closing the selected building", async () => {
+    searchProps.renderActual = true
+    renderFeature()
+    await whenMapMounted()
+    act(() => getSelectBuilding()("ГУК"))
+
+    const search = screen.getByRole("combobox", { name: "search.ariaLabel" })
+    fireEvent.change(search, { target: { value: "ГУК" } })
+    expect(screen.getByRole("listbox")).toBeInTheDocument()
+
+    fireEvent.keyDown(search, { key: "Escape" })
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "sidebar.close" })).toBeInTheDocument()
   })
 
   it("does nothing on Escape when no building is selected (guard false side)", async () => {
