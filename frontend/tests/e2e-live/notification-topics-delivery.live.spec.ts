@@ -1574,8 +1574,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
         `/api/v1/schedule/${encodeURIComponent(scheduleId!)}`,
         "DELETE"
       )
-      expect(deletion.status, "cleanup deletes only this test's schedule UUID").toBe(200)
-      expect((deletion.body as { ok?: unknown } | null)?.ok).toBe(true)
+      const deleted = assertMutationStatus(
+        deletion,
+        200,
+        "cleanup deletes only this test's schedule UUID"
+      )
+      expect(deleted.ok).toBe(true)
       scheduleDeleteSucceeded = true
     })
   }
@@ -1743,8 +1747,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
         `/api/v1/news/${encodeURIComponent(newsId!)}`,
         "DELETE"
       )
-      expect(deletion.status, "cleanup deletes only this test's news UUID").toBe(200)
-      expect((deletion.body as { ok?: unknown } | null)?.ok).toBe(true)
+      const deleted = assertMutationStatus(
+        deletion,
+        200,
+        "cleanup deletes only this test's news UUID"
+      )
+      expect(deleted.ok).toBe(true)
     })
   }
   if (eventId && teacherPage) {
@@ -1754,8 +1762,12 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
         `/api/v1/events/${encodeURIComponent(eventId!)}`,
         "DELETE"
       )
-      expect(deletion.status, "cleanup deletes only this test's event UUID").toBe(200)
-      expect((deletion.body as { ok?: unknown } | null)?.ok).toBe(true)
+      const deleted = assertMutationStatus(
+        deletion,
+        200,
+        "cleanup deletes only this test's event UUID"
+      )
+      expect(deleted.ok).toBe(true)
     })
   }
 
