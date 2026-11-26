@@ -216,8 +216,7 @@ async def sync_event_creator(event_id: UUID | int, user_id: UUID | int | None) -
         logger.warning(
             "event_creator_relationship_sync_failed",
             operation="touch",
-            event_id=str(event_id),
-            error=str(err),
+            error_type=type(err).__name__,
         )
 
 
@@ -241,8 +240,7 @@ async def sync_event_attendee(
         logger.warning(
             "event_attendee_relationship_sync_failed",
             operation=operation,
-            event_id=str(event_id),
-            error=str(err),
+            error_type=type(err).__name__,
         )
 
 
@@ -279,10 +277,8 @@ async def sync_group_participant(
     except RelationshipWriteError as err:
         logger.warning(
             "group_participant_relationship_sync_failed",
-            user_id=str(user_id),
-            old_group_id=str(old_group_id),
-            new_group_id=str(new_group_id),
-            error=str(err),
+            update_count=len(updates),
+            error_type=type(err).__name__,
         )
 
 
