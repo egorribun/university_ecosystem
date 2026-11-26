@@ -135,10 +135,9 @@ class WsHubClient:
         _INVALIDATION_FAILURES.inc()
         logger.error(
             "ws_hub_invalidation_failed",
-            user_id=str(user_id),
-            room_id=str(room_id),
+            evict_room=evict_room,
             attempts=_MAX_PUBLISH_ATTEMPTS,
-            exc_info=last_exc,
+            error_type=type(last_exc).__name__,
         )
         if raise_on_failure and last_exc is not None:
             raise last_exc
@@ -198,11 +197,8 @@ class WsHubClient:
         _INVALIDATION_FAILURES.inc()
         logger.error(
             "ws_hub_control_publish_failed",
-            user_id=str(user_id),
-            action=action,
-            reason=reason,
             attempts=_MAX_PUBLISH_ATTEMPTS,
-            exc_info=last_exc,
+            error_type=type(last_exc).__name__,
         )
 
 
