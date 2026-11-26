@@ -3,7 +3,7 @@
  *
  * Keys 1-9 select buildings, F toggles fullscreen, / focuses search,
  * ? opens the shortcuts overlay. All keys are ignored when focus is
- * inside an input, textarea, select, or contenteditable element.
+ * inside an editable element or dialog. The help key can also close the map's own dialog.
  *
  * Wave 108 — keyboard navigation for map page.
  */
@@ -49,6 +49,10 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
         return
       }
 
+      const togglesHelp = e.key === "?" || (e.shiftKey && e.key === "/")
+      const dialog = target.closest('dialog, [role="dialog"], [role="alertdialog"]')
+      if (dialog && (!togglesHelp || !dialog.hasAttribute("data-map-shortcuts-dialog"))) return
+
       // 1-9: select building by index
       const keyNum = parseInt(e.key, 10)
       if (keyNum >= 1 && keyNum <= 9) {
@@ -72,8 +76,8 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
         return
       }
 
-      // ?: open shortcuts overlay
-      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+      // ?: toggle shortcuts overlay
+      if (togglesHelp) {
         e.preventDefault()
         onToggleShortcuts()
       }

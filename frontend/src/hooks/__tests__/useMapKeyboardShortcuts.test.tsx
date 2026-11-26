@@ -121,6 +121,82 @@ describe("useMapKeyboardShortcuts hook", () => {
     }
   })
 
+  it.each(["dialog", "alertdialog", "native"])(
+    "does not run map commands from a different %s",
+    (kind) => {
+      const deps = {
+        onSelectBuilding: vi.fn(),
+        onToggleFullscreen: vi.fn(),
+        onFocusSearch: vi.fn(),
+        onToggleShortcuts: vi.fn(),
+      }
+      const { unmount } = renderHook(() => useMapKeyboardShortcuts(deps))
+      const dialog = document.createElement(kind === "native" ? "dialog" : "div")
+      if (kind === "native") dialog.setAttribute("open", "")
+      else dialog.setAttribute("role", kind)
+      const button = document.createElement("button")
+      dialog.appendChild(button)
+      document.body.appendChild(dialog)
+      try {
+        button.focus()
+        for (const key of ["1", "f", "/", "?"]) {
+          const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+          button.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(false)
+        }
+        for (const callback of Object.values(deps)) expect(callback).not.toHaveBeenCalled()
+      } finally {
+        dialog.remove()
+        unmount()
+      }
+    }
+  )
+
+  it("only lets the help shortcut toggle the map's own dialog", () => {
+    const deps = {
+      onSelectBuilding: vi.fn(),
+      onToggleFullscreen: vi.fn(),
+      onFocusSearch: vi.fn(),
+      onToggleShortcuts: vi.fn(),
+    }
+    const { unmount } = renderHook(() => useMapKeyboardShortcuts(deps))
+    const dialog = document.createElement("div")
+    dialog.setAttribute("role", "dialog")
+    dialog.setAttribute("data-map-shortcuts-dialog", "")
+    const button = document.createElement("button")
+    dialog.appendChild(button)
+    document.body.appendChild(dialog)
+    try {
+      button.focus()
+      for (const key of ["f", "1", "/"]) {
+        const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+        button.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(false)
+      }
+      expect(deps.onSelectBuilding).not.toHaveBeenCalled()
+      expect(deps.onToggleFullscreen).not.toHaveBeenCalled()
+      expect(deps.onFocusSearch).not.toHaveBeenCalled()
+
+      for (const [key, shiftKey] of [
+        ["?", false],
+        ["/", true],
+      ] as const) {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        })
+        button.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect(deps.onToggleShortcuts).toHaveBeenCalledTimes(2)
+    } finally {
+      dialog.remove()
+      unmount()
+    }
+  })
+
   it("registers window listeners and handles shortcuts", () => {
     const deps = {
       onSelectBuilding: vi.fn(),

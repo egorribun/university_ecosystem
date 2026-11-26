@@ -76,7 +76,9 @@ describe("MapShortcutsOverlay", () => {
 
   it("renders the shortcuts dialog with title and shortcut rows when open", () => {
     render(<MapShortcutsOverlay {...baseProps} />)
-    expect(screen.getByRole("dialog", { name: "shortcuts.title" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "shortcuts.title" })).toHaveAttribute(
+      "data-map-shortcuts-dialog"
+    )
     expect(screen.getByRole("heading", { name: "shortcuts.title" })).toBeInTheDocument()
     expect(screen.getByText("shortcuts.buildings")).toBeInTheDocument()
     expect(screen.getByText("shortcuts.zoom")).toBeInTheDocument()

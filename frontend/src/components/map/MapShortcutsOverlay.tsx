@@ -77,6 +77,7 @@ export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps)
           <m.div
             ref={dialogRef}
             role="dialog"
+            data-map-shortcuts-dialog=""
             aria-modal="true"
             aria-label={t("shortcuts.title")}
             className="map-card-matte relative w-full max-w-sm overflow-hidden rounded-2xl p-6"
