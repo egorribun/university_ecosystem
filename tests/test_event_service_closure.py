@@ -259,10 +259,11 @@ async def test_register_attendance_race_retry_keeps_existing_when_update_returns
 
 @pytest.mark.asyncio
 async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
-    event_service_closure, caplog
-):
+    event_service_closure, caplog: pytest.LogCaptureFixture
+) -> None:
     service, uow, repo = event_service_closure
-    event = _event(image_url="/static/tmp/event_images/owned.jpg")
+    private_image_url = f"/static/tmp/event_images/{uuid4()}.jpg"
+    event = _event(image_url=private_image_url)
     repo.get.return_value = event
     repo.get_event_file_urls.return_value = []
     order: list[str] = []
@@ -290,4 +291,6 @@ async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
     assert order == ["commit", f"image:{event.id}"]
     repo.delete.assert_awaited_once_with(event.id)
     assert "Failed to safely clean event image" in caplog.text
+    assert private_image_url not in caplog.text
+    assert "OSError" in caplog.text
     assert "private storage detail" not in caplog.text

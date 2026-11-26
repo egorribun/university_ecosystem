@@ -516,20 +516,29 @@ async def test_delete_event_not_found_returns_false(event_service, mock_repo):
 
 @pytest.mark.asyncio
 async def test_delete_event_swallows_file_cleanup_errors(
-    event_service, mock_uow, mock_repo
-):
+    event_service, mock_uow, mock_repo, caplog: pytest.LogCaptureFixture
+) -> None:
     event_id = uuid4()
     mock_repo.get.return_value = create_mock_event(event_id)  # has image_url
-    mock_repo.get_event_file_urls.return_value = ["file1.png", "file2.png"]
+    private_file_urls = [f"/storage/event_files/{uuid4()}.png" for _ in range(2)]
+    mock_repo.get_event_file_urls.return_value = private_file_urls
 
     # Storage deletion failing is non-fatal — the commit already succeeded.
-    with patch(
-        "app.utils.files.delete_static_file",
-        new=AsyncMock(side_effect=OSError("storage down")),
+    with (
+        patch("app.services.search_indexer.remove_document", new=AsyncMock()),
+        patch(
+            "app.utils.files.delete_static_file",
+            new=AsyncMock(side_effect=OSError("storage down")),
+        ) as delete_static_file,
     ):
         assert await event_service.delete_event(event_id) is True
 
     mock_uow.commit.assert_awaited_once()
+    assert delete_static_file.await_count == 2
+    assert caplog.text.count("Failed to delete event file") == 2
+    for file_url in private_file_urls:
+        assert file_url not in caplog.text
+    assert "OSError" in caplog.text
 
 
 # --------------------------------------------------------------------------- #
