@@ -49,6 +49,58 @@ describe("ActivityExportButton", () => {
     expect(screen.getByText("activity:export.png")).toBeInTheDocument()
   })
 
+  it("puts focus on the first export action and supports arrow keys and Escape", async () => {
+    const user = userEvent.setup()
+    renderButton()
+    const trigger = screen.getByRole("button", { name: "activity:export.title" })
+    await user.tab()
+    await user.keyboard("{Enter}")
+    const pdf = screen.getByRole("menuitem", { name: "activity:export.pdf" })
+    const png = screen.getByRole("menuitem", { name: "activity:export.png" })
+    expect(pdf).toHaveFocus()
+    expect(pdf).toHaveAttribute("tabindex", "-1")
+    expect(png).toHaveAttribute("tabindex", "-1")
+    await user.keyboard("{ArrowDown}")
+    expect(png).toHaveFocus()
+    await user.keyboard("{ArrowUp}")
+    expect(pdf).toHaveFocus()
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it("does not steal focus on Escape outside the export control", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <ActivityExportButton contentRef={{ current: document.createElement("div") }} />
+        <button type="button">Adjacent control</button>
+      </>
+    )
+    await user.click(screen.getByRole("button", { name: "activity:export.title" }))
+    const adjacent = screen.getByRole("button", { name: "Adjacent control" })
+    act(() => adjacent.focus())
+    expect(adjacent).toHaveFocus()
+    await user.keyboard("{Escape}")
+    expect(adjacent).toHaveFocus()
+  })
+
+  it("opens with Space and dismisses when Tab moves to the next control", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <ActivityExportButton contentRef={{ current: document.createElement("div") }} />
+        <button type="button">Adjacent control</button>
+      </>
+    )
+    await user.tab()
+    await user.keyboard(" ")
+    expect(screen.getByRole("menuitem", { name: "activity:export.pdf" })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Adjacent control" })).toHaveFocus()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
   it("exports as PDF and shows success feedback", async () => {
     const user = userEvent.setup()
     renderButton()
@@ -103,6 +155,30 @@ describe("ActivityExportButton", () => {
       resolveExport({ success: true })
     })
     await waitFor(() => expect(screen.getByText("activity:export.success")).toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+  })
+
+  it("keeps focus on the next control when a deferred export fails", async () => {
+    let rejectExport: (reason: Error) => void = () => {}
+    exportMock.pdf.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectExport = reject
+      })
+    )
+    const user = userEvent.setup()
+    render(
+      <>
+        <ActivityExportButton contentRef={{ current: document.createElement("div") }} />
+        <button type="button">Adjacent control</button>
+      </>
+    )
+    await user.click(screen.getByRole("button", { name: "activity:export.title" }))
+    await user.click(screen.getByRole("menuitem", { name: "activity:export.pdf" }))
+    const adjacent = screen.getByRole("button", { name: "Adjacent control" })
+    await user.click(adjacent)
+    await act(async () => rejectExport(new Error("failed export")))
+    expect(screen.getByText("activity:export.error")).toBeInTheDocument()
+    expect(adjacent).toHaveFocus()
   })
 
   it("clears success feedback after the display interval", async () => {
@@ -152,13 +228,9 @@ describe("ActivityExportButton", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
     fireEvent.mouseDown(screen.getByRole("menu"))
     expect(screen.getByRole("menu")).toBeInTheDocument()
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }))
-    })
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Shift" })
     expect(screen.getByRole("menu")).toBeInTheDocument()
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
-    })
+    await user.keyboard("{Escape}")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "activity:export.title" }))

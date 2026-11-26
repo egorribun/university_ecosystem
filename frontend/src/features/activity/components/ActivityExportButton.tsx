@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type RefObject } from "react"
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, FileImage, FileText, Loader2, Check, AlertCircle } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -16,12 +16,16 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
   const [exporting, setExporting] = useState(false)
   const exportingRef = useRef(false)
   const [feedback, setFeedback] = useState<FeedbackState>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const firstActionRef = useRef<HTMLButtonElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   // Auto-clear feedback after 3s
   useEffect(() => {
     if (!feedback) return
+    // The trigger is enabled again after React commits the export result.
+    // Do not take focus from another control the user moved to while waiting.
+    if (document.activeElement === document.body) triggerRef.current?.focus()
     const timer = setTimeout(() => setFeedback(null), 3000)
     return () => clearTimeout(timer)
   }, [feedback])
@@ -31,7 +35,7 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
     if (!open) return
     const handler = (e: MouseEvent) => {
       const target = e.target
-      if (target instanceof Node && menuRef.current && !menuRef.current.contains(target)) {
+      if (target instanceof Node && rootRef.current && !rootRef.current.contains(target)) {
         setOpen(false)
       }
     }
@@ -39,18 +43,28 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  // M3: Escape key handler + focus restore
   useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false)
-        triggerRef.current?.focus()
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
+    if (open) firstActionRef.current?.focus()
   }, [open])
+
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      event.stopPropagation()
+      setOpen(false)
+      triggerRef.current?.focus()
+      return
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+
+    event.preventDefault()
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+    )
+    const index = items.indexOf(document.activeElement as HTMLButtonElement)
+    const direction = event.key === "ArrowDown" ? 1 : -1
+    items[(index + direction + items.length) % items.length]?.focus()
+  }
 
   // H2: Show feedback on export success/failure
   const handleExport = useCallback(
@@ -75,14 +89,19 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
       } finally {
         exportingRef.current = false
         setExporting(false)
-        triggerRef.current?.focus()
       }
     },
     [contentRef, t]
   )
 
   return (
-    <div ref={menuRef} className="relative">
+    <div
+      ref={rootRef}
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -122,11 +141,15 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
         <div
           className="absolute right-0 top-full z-30 mt-1 min-w-[140px] rounded-lg bg-[var(--bg-surface)] shadow-lg ring-1 ring-black/5"
           role="menu"
+          tabIndex={-1}
+          onKeyDown={handleMenuKeyDown}
           aria-label={t("activity:export.title")}
         >
           <button
+            ref={firstActionRef}
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={() => void handleExport("pdf")}
             className="flex w-full min-h-[44px] items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-[var(--bg-surface-hover)] rounded-t-lg focus-visible:outline-none focus-visible:bg-[var(--bg-surface-hover)]"
           >
@@ -136,6 +159,7 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
           <button
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={() => void handleExport("png")}
             className="flex w-full min-h-[44px] items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-[var(--bg-surface-hover)] rounded-b-lg focus-visible:outline-none focus-visible:bg-[var(--bg-surface-hover)]"
           >
