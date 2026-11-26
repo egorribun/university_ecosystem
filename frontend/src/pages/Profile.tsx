@@ -9,6 +9,7 @@ import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import Layout from "@/components/Layout"
+import { Button as EditButton } from "@/components/ui/Button"
 import { SEO } from "@/components/ui/SEO"
 import {
   Alert,
@@ -94,6 +95,10 @@ export default function Profile() {
   const shouldEditFromSearch = search.edit === "1"
 
   const [edit, setEdit] = useState(shouldEditFromSearch)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const fullNameInputRef = useRef<HTMLInputElement>(null)
+  const wasEditing = useRef(edit)
+  const focusNameOnEdit = useRef(false)
   const [fullName, setFullName] = useState(user?.full_name || "")
   const [email, setEmail] = useState(user?.email || "")
   const [about, setAbout] = useState(user?.profile_detail?.about || "")
@@ -154,6 +159,17 @@ export default function Profile() {
   useEffect(() => {
     if (shouldEditFromSearch) setEdit(true)
   }, [shouldEditFromSearch])
+
+  useEffect(() => {
+    const modeChanged = wasEditing.current !== edit
+    wasEditing.current = edit
+    // A deep link should not move focus into the editor on its own.
+    if (!modeChanged || (edit && !focusNameOnEdit.current)) return
+    focusNameOnEdit.current = false
+    if (document.activeElement !== document.body) return
+    const target = edit ? fullNameInputRef.current : editButtonRef.current
+    target?.focus()
+  }, [edit])
 
   if (loading) {
     return (
@@ -339,6 +355,7 @@ export default function Profile() {
                       <ProfileEditor
                         user={user}
                         fullName={fullName}
+                        fullNameInputRef={fullNameInputRef}
                         setFullName={setFullName}
                         email={email}
                         setEmail={setEmail}
@@ -383,9 +400,17 @@ export default function Profile() {
                           onAchievementClick={(achievement) => setAchievementOpen(achievement)}
                         />
                         <div className="mt-4 flex justify-end">
-                          <Button variant="outline" onClick={() => setEdit(true)}>
+                          <EditButton
+                            ref={editButtonRef}
+                            variant="outline"
+                            size="md"
+                            onClick={() => {
+                              focusNameOnEdit.current = true
+                              setEdit(true)
+                            }}
+                          >
                             {t("profile:buttons.edit")}
-                          </Button>
+                          </EditButton>
                         </div>
                       </>
                     )}

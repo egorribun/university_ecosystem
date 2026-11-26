@@ -1,5 +1,6 @@
-import type { ReactNode } from "react"
+import type { ReactNode, Ref } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
@@ -286,6 +287,7 @@ vi.mock("@/components/profile", () => {
       about,
       email,
       fullName,
+      fullNameInputRef,
       onCancel,
       onSave,
       saving,
@@ -295,6 +297,7 @@ vi.mock("@/components/profile", () => {
     } = props as {
       email: string
       fullName: string
+      fullNameInputRef?: Ref<HTMLInputElement>
       about: string
       onCancel: () => void
       onSave: () => void
@@ -306,6 +309,7 @@ vi.mock("@/components/profile", () => {
     return (
       <section data-testid="profile-editor">
         <input
+          ref={fullNameInputRef}
           aria-label="full name"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
@@ -868,6 +872,7 @@ describe("Profile behavior", () => {
     rerender(<Profile />)
 
     await waitFor(() => expect(screen.getByTestId("profile-editor")).toBeInTheDocument())
+    expect(screen.getByRole("textbox", { name: "full name" })).not.toHaveFocus()
   })
 
   it("renders a server string validation error while leaving edit mode active", async () => {
@@ -973,6 +978,49 @@ describe("Profile behavior", () => {
     expect(screen.queryByTestId("profile-editor")).not.toBeInTheDocument()
     expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
   })
+
+  it("moves keyboard focus to the profile editor and returns it after cancel", async () => {
+    const keyboard = userEvent.setup()
+    render(<Profile />)
+
+    screen.getByRole("button", { name: "profile:buttons.edit" }).focus()
+    await keyboard.keyboard("{Enter}")
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveFocus()
+
+    screen.getByRole("button", { name: "cancel profile" }).focus()
+    await keyboard.keyboard("{Enter}")
+    expect(screen.getByRole("button", { name: "profile:buttons.edit" })).toHaveFocus()
+  })
+
+  it.each([false, true])(
+    "restores focus after save only if needed (outside focus: %s)",
+    async (outsideFocus) => {
+      let resolvePut!: (value: { data: User }) => void
+      apiState.put.mockReturnValueOnce(
+        new Promise<{ data: User }>((resolve) => {
+          resolvePut = resolve
+        })
+      )
+      const keyboard = userEvent.setup()
+      render(
+        <>
+          <Profile />
+          <button type="button">Stay here</button>
+        </>
+      )
+      await keyboard.click(screen.getByRole("button", { name: "profile:buttons.edit" }))
+      await keyboard.click(screen.getByRole("button", { name: "save profile" }))
+      const outsideButton = screen.getByRole("button", { name: "Stay here" })
+      if (outsideFocus) outsideButton.focus()
+
+      await act(async () => {
+        resolvePut({ data: user })
+      })
+
+      const editButton = screen.getByRole("button", { name: "profile:buttons.edit" })
+      expect(outsideFocus ? outsideButton : editButton).toHaveFocus()
+    }
+  )
 
   it.each([
     [false, null],

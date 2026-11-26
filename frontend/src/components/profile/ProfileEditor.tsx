@@ -1,9 +1,11 @@
+import type { Ref } from "react"
 import { useTranslation } from "react-i18next"
 import type { User } from "@/types/User"
 
 type ProfileEditorProps = {
   user: User | null
   fullName: string
+  fullNameInputRef?: Ref<HTMLInputElement>
   setFullName: (val: string) => void
   email: string
   setEmail: (val: string) => void
@@ -40,6 +42,7 @@ type ProfileEditorProps = {
 export const ProfileEditor = ({
   user,
   fullName,
+  fullNameInputRef,
   setFullName,
   email,
   telegram,
@@ -86,6 +89,7 @@ export const ProfileEditor = ({
           </label>
           <input
             id="profile-full-name"
+            ref={fullNameInputRef}
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
