@@ -126,12 +126,14 @@ describe("NavbarOverflowMenu mutation contract", () => {
     const trigger = screen.getByRole("button", { name: "navigation:aria.overflowMenu" })
     expect(trigger).toHaveAttribute("aria-haspopup", "menu")
     expect(trigger).toHaveAttribute("aria-controls", "navbar-overflow-menu")
+    expect(document.getElementById("navbar-overflow-menu")).toBeEmptyDOMElement()
     expect(trigger).toHaveAttribute("aria-expanded", "false")
     expect(trigger).toHaveAttribute("data-motion-while-tap", "undefined")
     expect(trigger).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
 
     await userEvent.click(trigger)
     const menu = screen.getByRole("menu", { name: "navigation:aria.overflowMenu" })
+    expect(document.getElementById("navbar-overflow-menu")).toContainElement(menu)
     expect(menu).toHaveAttribute(
       "data-motion-initial",
       JSON.stringify({ opacity: 0, scale: 0.95, y: -4 })

@@ -34,7 +34,11 @@ const renderMenu = async (overrides: Partial<Parameters<typeof NavbarOverflowMen
     ...overrides,
   }
   await renderWithRouter({
-    ui: () => <NavbarOverflowMenu {...props} />,
+    ui: () => (
+      <nav>
+        <NavbarOverflowMenu {...props} />
+      </nav>
+    ),
     extraRoutes,
     authProvider: false,
   })
@@ -54,13 +58,15 @@ describe("NavbarOverflowMenu", () => {
     expect(document.querySelector(".navbar-desktop-overflow")).toBeInTheDocument()
     expect(trigger).toHaveAttribute("aria-haspopup", "menu")
     expect(trigger).toHaveAttribute("aria-controls", "navbar-overflow-menu")
+    expect(document.getElementById("navbar-overflow-menu")).toBeEmptyDOMElement()
     expect(trigger).toHaveClass("size-11")
     expect(trigger).toHaveAttribute("aria-expanded", "false")
 
     await userEvent.click(trigger)
 
     expect(trigger).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("menu")).toBeInTheDocument()
+    const menu = screen.getByRole("menu")
+    expect(document.getElementById("navbar-overflow-menu")).toContainElement(menu)
     expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
     expect(screen.getByRole("menuitem", { name: "Events" })).toBeInTheDocument()
   })
@@ -82,7 +88,26 @@ describe("NavbarOverflowMenu", () => {
     await user.keyboard("{Escape}")
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(document.getElementById("navbar-overflow-menu")).toBeEmptyDOMElement()
     expect(trigger).toHaveFocus()
+  })
+
+  it("keeps the existing admin visual smoke fallback usable from a closed menu", async () => {
+    const adminRoute = "/admin/users"
+    const props = await renderMenu({
+      items: [{ to: adminRoute, label: "Admin users", icon: Home }],
+    })
+    const selector = 'nav button[aria-controls="navbar-overflow-menu"]'
+    expect(document.querySelector(`nav a[href="${adminRoute}"]`)).not.toBeInTheDocument()
+    const trigger = document.querySelector<HTMLButtonElement>(selector)
+    expect(trigger).toBeInTheDocument()
+    await userEvent.click(trigger!)
+    const link = document.querySelector<HTMLAnchorElement>(
+      `#navbar-overflow-menu a[href="${adminRoute}"]`
+    )
+    await waitFor(() => expect(link).toBeVisible())
+    await userEvent.click(link!)
+    expect(props.go).toHaveBeenCalledWith(adminRoute)
   })
 
   it("closes the menu on second trigger click", async () => {
