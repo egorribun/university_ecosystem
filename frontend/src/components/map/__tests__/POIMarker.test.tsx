@@ -183,7 +183,9 @@ describe("POIMarker", () => {
       <POIMarker {...baseProps} isPopupOpen onPopupClose={onPopupClose} />
     )
     expect(screen.getByText("poi.items.cafe-1.name")).toBeInTheDocument()
-    expect(screen.getByText("poi.categories.food")).toBeInTheDocument()
+    const category = screen.getByText("poi.categories.food")
+    expect(category).toHaveClass("text-text-secondary")
+    expect(category).not.toHaveClass("opacity-50")
     expect(document.querySelector(".map-popup-premium")).toHaveAttribute(
       "data-close-on-click",
       "false"

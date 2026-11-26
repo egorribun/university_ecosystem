@@ -59,6 +59,7 @@
 
     /* ── Matte card system ────────────────────────── */
     --map-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-teal-50) 4%);
+    --map-popup-link-color: var(--color-teal-900);
     --map-card-shadow:
       0 1px 2px color-mix(in srgb, black 5%, transparent),
       0 4px 12px color-mix(in srgb, black 4%, transparent),
@@ -122,6 +123,7 @@
     --map-orb-2: color-mix(in srgb, var(--color-cyan-400) 14%, transparent);
     --map-orb-3: color-mix(in srgb, var(--color-teal-500) 10%, transparent);
     --map-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-teal-900) 5%);
+    --map-popup-link-color: var(--color-teal-400);
     --map-card-shadow:
       0 1px 2px color-mix(in srgb, black 20%, transparent),
       0 4px 12px color-mix(in srgb, black 15%, transparent),
@@ -786,7 +788,7 @@
   display: inline-block;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-teal-500);
+  color: var(--map-popup-link-color);
   text-decoration: none;
   transition: opacity 0.15s ease;
 }
