@@ -511,7 +511,7 @@ func (c *Client) handleJoin(ctx context.Context, msg Message) {
 			c.cancelConnection()
 			return
 		}
-		c.rejectUnauthorizedRoomJoin(ctx)
+		c.rejectUnauthorizedRoomJoin(ctx, msg.Room)
 		return
 	}
 	c.finishAuthorizedRoomJoin(ctx, msg, decision)
@@ -653,7 +653,8 @@ func parseRoomJoinPayload(payload []byte, decision *roomJoinDecision) {
 	decision.legacyCursor = request.LastSeq > 0 || request.LastMsgID != ""
 }
 
-func (c *Client) rejectUnauthorizedRoomJoin(ctx context.Context) {
+// Keep the join contract's room argument out of the diagnostic.
+func (c *Client) rejectUnauthorizedRoomJoin(ctx context.Context, _ string) {
 	AuthFailuresTotal.WithLabelValues("room_join_denied").Inc() // RZ-23-06: wire existing metric
 	if c.Hub.Logger != nil {
 		c.Hub.Logger.WarnContext(ctx, "Unauthorized room join rejected")
