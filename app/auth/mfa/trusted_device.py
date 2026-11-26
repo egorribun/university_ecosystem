@@ -226,11 +226,7 @@ async def _consume_trusted_device_token(
     if not hmac.compare_digest(
         _binding_digest(key, request_ip, request_ua), device.binding_digest
     ):
-        logger.warning(
-            "trusted_device_binding_mismatch user_id=%s device_id=%s",
-            user.id,
-            device.id,
-        )
+        logger.warning("trusted_device_binding_mismatch user_id=%s", user.id)
         await db.delete(device)
         await db.flush()
         return None
