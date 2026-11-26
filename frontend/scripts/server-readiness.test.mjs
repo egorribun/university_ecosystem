@@ -193,6 +193,7 @@ test(
     )
 
     let child
+    let stderr = ""
     try {
       const port = await reserveLoopbackPort()
       child = spawn(
@@ -212,9 +213,13 @@ test(
               ? { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }
               : {}),
           },
-          stdio: "ignore",
+          stdio: ["ignore", "ignore", "pipe"],
         }
       )
+      child.stderr.setEncoding("utf8")
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk
+      })
 
       const origin = `http://127.0.0.1:${port}`
       const warmupResponse = await waitForFixtureServer(child, `${origin}/login`)
@@ -283,6 +288,12 @@ test(
       assert.doesNotMatch(
         responseBody,
         /SYNTHETIC_RENDER_DIAGNOSTIC_ONLY|Traceback|fixtureRenderer|notFound\.(?:title|description|home|login)/u
+      )
+      await stopFixtureServer(child)
+      assert.match(stderr, /server-prod: handler error: Error/u)
+      assert.doesNotMatch(
+        stderr,
+        /SYNTHETIC_RENDER_DIAGNOSTIC_ONLY|fixtureRenderer|private renderer detail/u
       )
     } finally {
       if (child) await stopFixtureServer(child)

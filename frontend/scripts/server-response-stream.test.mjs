@@ -3,7 +3,19 @@ import { readFile } from "node:fs/promises"
 import { PassThrough } from "node:stream"
 import test from "node:test"
 
-import { pipeResponseBody } from "./server-response-stream.mjs"
+import { pipeResponseBody, serverErrorType } from "./server-response-stream.mjs"
+
+test("serverErrorType does not inspect non-error objects", () => {
+  const opaqueThrownValue = {
+    get name() {
+      throw new Error("the thrown value must not be inspected")
+    },
+    get message() {
+      throw new Error("the thrown value must not be inspected")
+    },
+  }
+  assert.equal(serverErrorType(opaqueThrownValue), "NonError")
+})
 
 test("pipeResponseBody completes a normal web response", async () => {
   const destination = new PassThrough()
@@ -59,13 +71,14 @@ test("pipeResponseBody consumes a destination error without re-emitting it from 
 
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(logged.length, 1)
-  assert.match(logged[0][0], /destination stream error/u)
+  assert.deepEqual(logged[0], ["server-prod: destination stream error:", "Error"])
   assert.notEqual(cancelReason, undefined)
 })
 
 test("pipeResponseBody aborts the transport when the SSR source truncates", async () => {
   const logged = []
-  const sourceFailure = new Error("render failed after headers")
+  const sourceFailure = new TypeError("render failed after headers")
+  sourceFailure.name = "private renderer detail"
   const source = new ReadableStream({
     start(controller) {
       controller.enqueue(new TextEncoder().encode("partial"))
@@ -83,7 +96,7 @@ test("pipeResponseBody aborts the transport when the SSR source truncates", asyn
   assert.equal(destination.writableEnded, false, "a truncated SSR body must not look complete")
   assert.equal(destination.writableFinished, false, "a truncated SSR body must not finish cleanly")
   assert.equal(logged.length, 1)
-  assert.equal(logged[0][1], sourceFailure)
+  assert.deepEqual(logged[0], ["server-prod: response stream error:", "TypeError"])
 })
 
 test("the production frontend image copies every server runtime module", async () => {

@@ -51,7 +51,7 @@ import { pathToFileURL } from "node:url"
 // without triggering this script's top-level createServer + listen.
 import { CONTENT_TYPES } from "./contentTypes.mjs"
 import { createNotFoundResponse, shouldServeNotFoundDocument } from "./not-found-response.mjs"
-import { pipeResponseBody } from "./server-response-stream.mjs"
+import { pipeResponseBody, serverErrorType } from "./server-response-stream.mjs"
 import { warmSsrRuntime } from "./server-readiness.mjs"
 import { sanitizeRequestTarget } from "./server-request-log.mjs"
 import { resolveStaticFile } from "./server-static.mjs"
@@ -371,7 +371,7 @@ const server = createServer(async (req, res) => {
     const ms = Date.now() - start
     console.log(`${req.method} ${logTarget} ${res.statusCode} ${ms}ms`)
   } catch (err) {
-    console.error("server-prod: handler error:", err)
+    console.error("server-prod: handler error:", serverErrorType(err))
     if (!res.headersSent) {
       res.statusCode = 500
       res.setHeader("cache-control", "no-store, private, max-age=0")
