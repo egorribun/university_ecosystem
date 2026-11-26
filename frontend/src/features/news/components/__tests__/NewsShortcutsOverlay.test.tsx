@@ -6,8 +6,9 @@
  * and handles Escape via onKeyDown on the backdrop rather than a global
  * window listener, so that path is also tested here.
  */
-import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { afterEach, describe, expect, it } from "vitest"
 import { NewsShortcutsOverlay } from "../NewsShortcutsOverlay"
 
 function renderOverlay() {
@@ -20,7 +21,68 @@ function pressKey(key: string, options: KeyboardEventInit = {}) {
   fireEvent.keyDown(document.body, { key, ...options })
 }
 
+afterEach(async () => {
+  cleanup()
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+})
+
 describe("NewsShortcutsOverlay", () => {
+  it.each(["?", "{Escape}"])("contains focus and closes with %s from inside", async (key) => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <button type="button">News trigger</button>
+        <NewsShortcutsOverlay />
+        <button type="button">Next action</button>
+      </>
+    )
+    const trigger = screen.getByRole("button", { name: "News trigger" })
+    trigger.focus()
+
+    await user.keyboard("?")
+    const dialog = screen.getByRole("dialog")
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true), {
+      timeout: 1000,
+    })
+    await user.tab()
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    await user.tab({ shift: true })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+
+    await user.keyboard(key)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it("provides a close button without dismissing when reading the card", async () => {
+    const user = userEvent.setup()
+    renderOverlay()
+    pressKey("?")
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAccessibleName("Keyboard shortcuts")
+    expect(dialog).toHaveAccessibleDescription("Press ? or Esc to close")
+    await user.click(within(dialog).getByRole("heading"))
+    expect(dialog).toBeInTheDocument()
+
+    const close = within(dialog).getByRole("button", { name: /close|закрыть/i })
+    expect(close).toHaveClass("min-h-[44px]", "min-w-[44px]")
+    await user.click(close)
+    expect(dialog).not.toBeInTheDocument()
+  })
+
+  it("does not take over shortcut keys in a different modal", () => {
+    render(
+      <>
+        <div role="dialog" aria-label="Other dialog">
+          <button type="button">Other control</button>
+        </div>
+        <NewsShortcutsOverlay />
+      </>
+    )
+    fireEvent.keyDown(screen.getByRole("button", { name: "Other control" }), { key: "?" })
+    expect(screen.getAllByRole("dialog")).toHaveLength(1)
+  })
+
   // ── initial state ──────────────────────────────────────────────────────────
   it("renders nothing by default (overlay is closed)", () => {
     renderOverlay()
