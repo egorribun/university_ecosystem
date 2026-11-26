@@ -5,7 +5,7 @@ import type { User } from "@/types/User"
 
 import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
-import { useEffect, useId } from "react"
+import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -35,18 +35,6 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
     onDeactivate: onClose,
     returnFocus: true,
   })
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        onClose()
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [isOpen, onClose])
 
   return (
     <AnimatePresence>
