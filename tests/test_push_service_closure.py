@@ -77,8 +77,11 @@ async def test_deliver_push_prepares_and_returns_successful_results():
 
 
 @pytest.mark.asyncio
-async def test_deliver_push_converts_exceptions_to_error_results():
+async def test_deliver_push_converts_exceptions_to_safe_error_results(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     subscription = MagicMock()
+    private_context = str(uuid4())
     with (
         patch.object(push_service, "subscription_supports_topic", return_value=True),
         patch(
@@ -88,7 +91,7 @@ async def test_deliver_push_converts_exceptions_to_error_results():
         patch.object(
             push_service,
             "_deliver_to_subscription",
-            new=AsyncMock(side_effect=RuntimeError("push failed")),
+            new=AsyncMock(side_effect=RuntimeError(private_context)),
         ),
     ):
         result = await push_service.deliver_push_to_subscriptions(
@@ -97,4 +100,6 @@ async def test_deliver_push_converts_exceptions_to_error_results():
 
     assert len(result) == 1
     assert result[0].status == "error"
-    assert result[0].error == "push failed"
+    assert private_context not in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert result[0].error == "push delivery failed"

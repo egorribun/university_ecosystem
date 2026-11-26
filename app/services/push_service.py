@@ -93,7 +93,7 @@ async def deliver_push_to_subscriptions(
         if isinstance(r, WebPushResult):
             results.append(r)
         else:
-            logger.warning("push delivery exception: %s", r)
+            logger.warning("push delivery exception", exception_type=type(r).__name__)
             # Find the original sub for ID/endpoint
             # Note: This is a fallback, ideally we'd pass sub to _deliver_one
             results.append(
@@ -102,7 +102,7 @@ async def deliver_push_to_subscriptions(
                     endpoint="unknown",
                     user_id=_UNKNOWN_UUID,  # LOW-W19: sentinel, not random
                     status="error",
-                    error=str(r),
+                    error="push delivery failed",
                 )
             )
 
