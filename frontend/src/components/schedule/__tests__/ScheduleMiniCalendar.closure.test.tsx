@@ -114,6 +114,80 @@ describe("ScheduleMiniCalendar", () => {
     expect(onMonthChange).toHaveBeenLastCalledWith(new Date("2026-06-15T12:00:00"))
   })
 
+  it.each([false, true])("restores keyboard focus after Today (loading: %s)", async (isLoading) => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-06-15T12:00:00"))
+    const user = userEvent.setup()
+    const onMonthChange = vi.fn()
+
+    function ControlledCalendar() {
+      const [month, setMonth] = useState(new Date(2026, 5, 1))
+      return (
+        <ScheduleMiniCalendar
+          month={month}
+          isLoading={isLoading}
+          onMonthChange={(nextMonth) => {
+            onMonthChange(nextMonth)
+            setMonth(nextMonth)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledCalendar />)
+    if (!isLoading) {
+      await user.click(screen.getByRole("button", { name: "June 16, 2026" }))
+    }
+    await user.click(screen.getByRole("button", { name: "common:next" }))
+    expect(screen.getByRole("grid", { name: "July 2026" })).toBeInTheDocument()
+    onMonthChange.mockClear()
+    screen.getByRole("button", { name: "common:prev" }).focus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "common:today" })).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(onMonthChange).toHaveBeenCalledExactlyOnceWith(new Date("2026-06-15T12:00:00"))
+    expect(screen.queryByRole("button", { name: "common:today" })).not.toBeInTheDocument()
+    const grid = screen.getByRole("grid", { name: "June 2026" })
+    if (isLoading) {
+      expect(screen.getByRole("button", { name: "common:next" })).toHaveFocus()
+      expect(grid).toHaveAttribute("aria-busy", "true")
+    } else {
+      const today = within(grid).getByRole("button", { name: "June 15, 2026" })
+      expect(today).toHaveFocus()
+      expect(today).toHaveAttribute("tabindex", "0")
+    }
+  })
+
+  it("does not reclaim focus after a deferred Today request if focus moved elsewhere", async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-06-15T12:00:00"))
+    const user = userEvent.setup()
+    const onMonthChange = vi.fn()
+    const view = (month: Date) => (
+      <>
+        <ScheduleMiniCalendar month={month} onMonthChange={onMonthChange} />
+        <button type="button">After calendar</button>
+      </>
+    )
+    const { rerender } = render(view(new Date(2026, 6, 1)))
+
+    await user.tab()
+    await user.tab()
+    await user.keyboard("{Enter}")
+    expect(onMonthChange).toHaveBeenCalledExactlyOnceWith(new Date("2026-06-15T12:00:00"))
+    expect(screen.getByRole("grid", { name: "July 2026" })).toBeInTheDocument()
+
+    const outside = screen.getByRole("button", { name: "After calendar" })
+    await user.click(outside)
+    rerender(view(new Date(2026, 5, 15)))
+
+    expect(screen.getByRole("grid", { name: "June 2026" })).toBeInTheDocument()
+    expect(outside).toHaveFocus()
+  })
+
   it("supports a controlled month and Sunday offsets", () => {
     const { container } = render(<ScheduleMiniCalendar month={new Date(2026, 10, 1)} />)
 
