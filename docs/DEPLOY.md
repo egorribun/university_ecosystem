@@ -137,6 +137,7 @@ Workflow проверяет эти права до мутаций и прину�
 
 - Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Prometheus-метрики выключены по умолчанию в `docker-compose.yml`. Чтобы их включить, установите `ENABLE_METRICS_ENDPOINT=true` **и** задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend теперь падает на старте — или возвращает `503` во время запроса — если метрики включены без учётных данных, за исключением случаев, когда allowlist ограничен петлевыми адресами (`127.0.0.1`, `::1`, `localhost`).
+- В `docker-compose.full.yml` и при подключении `docker-compose.observability.yml` метрики backend уже включены. Эти конфигурации Compose и [штатная конфигурация Prometheus](../infrastructure/observability/prometheus.yml) используют фиксированное имя `metrics_scraper`. Передайте `METRICS_BASIC_AUTH_PASSWORD` в Compose: один и тот же пароль получат backend и Prometheus. Настройки для базового Compose из предыдущего пункта не переопределяют это имя.
 - Заголовок `Cross-Origin-Resource-Policy` включён по умолчанию (`ENABLE_CORP=true`); для отключения установите `ENABLE_CORP=false`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
 
 ## Миграции базы данных
@@ -269,11 +270,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   Chromium E2E-сборка с покрытием (`E2E_COVERAGE=true` и
   `FRONTEND_BUILD_UNMINIFIED=true`) использует отдельный диагностический предел 9 000 000 байт;
   такой unminified-артефакт не предназначен для деплоя.
-- Проверить офлайн-навигацию и кеширование данных можно e2e-тестом:
+- Эти E2E-тесты Chromium проверяют, что кешированные данные доступны без сети, а ранее не посещённый маршрут открывается из precached shell и гидратируется. Тесты используют подменённые ответы API; проверки развёрнутого Core описаны в [разделе live acceptance](../TESTING.md).
 
   ```bash
   cd frontend
-  npm run test:e2e -- offline.spec.ts
+  npm run test:e2e -- --project=chromium offline.spec.ts offline-shell-fallback.spec.ts
   ```
 
 ### Ротация ключа шифрования TOTP-enrollment

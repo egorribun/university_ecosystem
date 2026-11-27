@@ -345,6 +345,7 @@ const LIVE_OPERATION_DECLARATIONS: Readonly<Record<string, readonly number[]>> =
   "push-subscription.live.spec.ts": [115],
   "pwa-offline-shell.live.spec.ts": [239, 323],
   "register-double-submit.live.spec.ts": [42],
+  "register-standard.live.spec.ts": [237, 241, 245, 249, 253, 257],
   "schedule-200-equivalent-reflow.live.spec.ts": [5],
   "schedule-grid-keyboard.live.spec.ts": [5],
   "schedule-hydration-i18n.live.spec.ts": [87, 91],

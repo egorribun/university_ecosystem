@@ -150,8 +150,9 @@ describe("ensureSessionSigningKey", () => {
         keySize: 256,
         iterations: 100000,
       })
+      // The page's first key suspends the worker namespace instead of clearing it.
       expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
-        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE },
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
           sessionHash: "mock_pbkdf2",
@@ -792,7 +793,7 @@ describe("signing key handoff ownership", () => {
       expect(isPriorWorkCurrent()).toBe(false)
       expect(result.current.isCurrentSigningSession()).toBe(false)
       expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
-        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE },
       ])
 
       await act(async () => {

@@ -118,7 +118,7 @@ afterEach(() => {
 })
 
 describe("private API session isolation", () => {
-  it("reproduces two protected requests fenced by same-session page bootstrap", async () => {
+  it("keeps two protected requests in flight across a same-session page bootstrap", async () => {
     localStorage.clear()
     vi.spyOn(cryptoWorker, "pbkdf2").mockImplementation(async ({ value }) => `hash-${value}`)
     const listeners = new Map<string, (event: MessageEvent) => void>()
@@ -131,6 +131,8 @@ describe("private API session isolation", () => {
         posted.push(message.type)
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -193,18 +195,19 @@ describe("private API session isolation", () => {
       expect(await freshPage.result.current.ensureSessionSigningKey()).toBe("same-session-key")
     })
     expect(posted).toEqual([
-      SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+      SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE,
       SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
     ])
     expect(api.getSessionCacheScope()).toBe(priorScope)
     notificationsResponse.resolve(new Response("private notifications"))
     eventsResponse.resolve(new Response("private events"))
-    expect((await notifications).type).toBe("error")
-    expect((await events).type).toBe("error")
+    // The page restored exactly the suspended scope: its own reads are not fenced.
+    expect(await (await notifications).text()).toBe("private notifications")
+    expect(await (await events).text()).toBe("private events")
     freshPage.unmount()
   })
 
-  it("retires old protected responses before a newly fetched key finishes hashing", async () => {
+  it("never delivers an old protected response to a newly fetched key's session", async () => {
     localStorage.clear()
     const hashing = deferred<string>()
     const hashingStarted = deferred<void>()
@@ -223,6 +226,8 @@ describe("private API session isolation", () => {
       ) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -279,9 +284,17 @@ describe("private API session isolation", () => {
       await hashingStarted.promise
       expect(api.getSessionCacheScope()).toBeNull()
       privateResponse.resolve(new Response("private old session"))
-      expect((await pending).type).toBe("error")
+      let settled = false
+      void pending.then(() => {
+        settled = true
+      })
+      await Promise.resolve()
+      await Promise.resolve()
+      // Held, never delivered, while the page has not named its session.
+      expect(settled).toBe(false)
       hashing.resolve("hash-new-session-key")
       await installation
+      expect((await pending).type).toBe("error")
     })
     expect(api.getSessionCacheScope()).not.toBe(priorScope)
     freshPage.unmount()
@@ -304,6 +317,8 @@ describe("private API session isolation", () => {
       ) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -385,7 +400,7 @@ describe("private API session isolation", () => {
         await waitFor(() => expect(queued).toHaveLength(2))
         expect(fetchMock).not.toHaveBeenCalled()
         expect(queued.map(({ message }) => message.type)).toEqual([
-          SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+          SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE,
           SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
         ])
         queued.forEach(({ message, ports }) => deliver(message, ports))
@@ -409,6 +424,8 @@ describe("private API session isolation", () => {
       postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -732,6 +749,8 @@ describe("private API session isolation", () => {
       postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -950,6 +969,8 @@ describe("private API session isolation", () => {
       postMessage: (message: { type: string; sessionHash?: string; sessionScope?: string }) => {
         if (message.type === SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE)
           void api.clearSessionCaches()
+        if (message.type === SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE)
+          void api.suspendSessionCaches()
         if (
           message.type === SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY &&
           message.sessionHash
@@ -1198,6 +1219,136 @@ describe("private API session isolation", () => {
     expect((await result).type).toBe("error")
     expect(api.getSessionCacheScope()).toBe("account-a:live")
     expect(entries.size).toBe(0)
+  })
+
+  async function heldRequest(init?: RequestInit) {
+    const delayed = deferred<Response>()
+    const entered = deferred<void>()
+    fetchMock.mockImplementationOnce(() => {
+      entered.resolve()
+      return delayed.promise
+    })
+    const result = request(undefined, init)
+    await entered.promise
+    let settled = false
+    void result.then(() => {
+      settled = true
+    })
+    return { delayed, result, isSettled: () => settled }
+  }
+
+  async function flushMicrotasks() {
+    for (let index = 0; index < 10; index += 1) await Promise.resolve()
+  }
+
+  it("delivers a response held while its session is suspended and then restored exactly", async () => {
+    api.setSessionHash("account-a", "account-a:live")
+    const held = await heldRequest()
+    const suspended = api.suspendSessionCaches()
+    expect(api.getSessionCacheScope()).toBeNull()
+    held.delayed.resolve(new Response("live payload"))
+    await flushMicrotasks()
+    expect(held.isSettled()).toBe(false)
+
+    api.setSessionHash("account-a", "account-a:live")
+    expect(await (await held.result).text()).toBe("live payload")
+    await suspended
+  })
+
+  it.each([
+    ["another account", "account-b", "account-b:live"],
+    ["a new session of the same account", "account-a", "account-a:next"],
+  ])("rejects a held response when %s is published instead", async (_case, hash, scope) => {
+    api.setSessionHash("account-a", "account-a:live")
+    const held = await heldRequest({ cache: "no-store" })
+    const suspended = api.suspendSessionCaches()
+    held.delayed.resolve(new Response("old private payload"))
+    await flushMicrotasks()
+    expect(held.isSettled()).toBe(false)
+
+    api.setSessionHash(hash, scope)
+    expect((await held.result).type).toBe("error")
+    await suspended
+    expect([...entries.values()].every((cache) => cache.size === 0)).toBe(true)
+  })
+
+  it("rejects a held response when a clear interrupts the suspension, even if the scope returns", async () => {
+    api.setSessionHash("account-a", "account-a:live")
+    const held = await heldRequest()
+    const suspended = api.suspendSessionCaches()
+    held.delayed.resolve(new Response("old private payload"))
+    await flushMicrotasks()
+
+    await api.clearSessionCaches()
+    api.setSessionHash("account-a", "account-a:live")
+    expect((await held.result).type).toBe("error")
+    await suspended
+  })
+
+  it("rejects a held response once the suspension limit passes, and a later restore is a new session", async () => {
+    api.setSessionHash("account-a", "account-a:live")
+    const held = await heldRequest({ cache: "no-store" })
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    const suspended = api.suspendSessionCaches()
+    held.delayed.resolve(new Response("old private payload"))
+    await vi.advanceTimersByTimeAsync(api.SESSION_SUSPENSION_LIMIT_MS - 1)
+    expect(held.isSettled()).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await held.result).type).toBe("error")
+    await suspended
+    vi.useRealTimers()
+
+    // The expired suspension cannot be resumed: in-flight work of that period stays fenced.
+    const late = await heldRequest({ cache: "no-store" })
+    api.setSessionHash("account-a", "account-a:live")
+    late.delayed.resolve(new Response("pre-restore payload"))
+    expect((await late.result).type).toBe("error")
+  })
+
+  it("treats a suspension without an established session as a clear", async () => {
+    await storage.open("api-cache:stale")
+    expect(api.getSessionCacheScope()).toBeNull()
+    await api.suspendSessionCaches()
+    expect(entries.has("api-cache:stale")).toBe(false)
+
+    const held = await heldRequest(undefined)
+    api.setSessionHash("account-a", "account-a:live")
+    held.delayed.resolve(new Response("pre-login payload"))
+    expect((await held.result).type).toBe("error")
+  })
+
+  it.each([
+    ["another account", "account-b", "account-b:live"],
+    ["a new session of the same account", "account-a", "account-a:next"],
+  ])(
+    "rejects a response in flight across %s, even when suspensions bring its scope back",
+    async (_case, hash, scope) => {
+      api.setSessionHash("account-a", "account-a:live")
+      const held = await heldRequest({ cache: "no-store" })
+      const firstSuspension = api.suspendSessionCaches()
+      api.setSessionHash(hash, scope)
+      await firstSuspension
+      const secondSuspension = api.suspendSessionCaches()
+      api.setSessionHash("account-a", "account-a:live")
+      await secondSuspension
+
+      held.delayed.resolve(new Response("account A payload from before account B"))
+      expect((await held.result).type).toBe("error")
+    }
+  )
+
+  it("keeps work started during a suspension fenced after a restore and a later logout", async () => {
+    api.setSessionHash("account-a", "account-a:live")
+    const suspended = api.suspendSessionCaches()
+    // The page has not answered yet, so this request runs unconfirmed and unscoped.
+    const duringSuspension = await heldRequest()
+    api.setSessionHash("account-a", "account-a:live")
+    await suspended
+    await api.clearSessionCaches()
+    expect(api.getSessionCacheScope()).toBeNull()
+
+    duringSuspension.delayed.resolve(new Response("suspension-era payload"))
+    expect((await duringSuspension.result).type).toBe("error")
   })
 
   it("rejects a network response delayed across account changes", async () => {

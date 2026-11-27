@@ -176,3 +176,325 @@ test("mobile drawer checks focused layout and stable physical targets without we
   assert.match(drawer, /previousBodyOverflow/u)
   assert.doesNotMatch(drawer + helper, /waitForTimeout|setTimeout|Math\.round|toBeCloseTo/u)
 })
+
+test("drawer frame evidence measures real intervals and rejects invalid samples", async () => {
+  const { summarizeDrawerFrames } = await import(
+    new URL("./mobile-drawer-rapid.ts", import.meta.url)
+  )
+  const frames = [
+    { timestamp: 100, left: null, opening: null },
+    { timestamp: 116, left: 390, opening: 1 },
+    { timestamp: 132, left: 240, opening: 1 },
+    { timestamp: 182, left: 40, opening: 2 },
+    { timestamp: 198, left: null, opening: null },
+  ]
+  assert.deepEqual(summarizeDrawerFrames(frames), {
+    frameCount: 5,
+    drawerFrameCount: 3,
+    observedOpenings: 2,
+    medianMs: 16,
+    p95Ms: 50,
+    maxMs: 50,
+    drawerP95Ms: 16,
+    drawerMaxMs: 16,
+    travelPx: 350,
+  })
+  assert.throws(() => summarizeDrawerFrames([]), /two frames/u)
+  assert.throws(
+    () => summarizeDrawerFrames([frames[1], { timestamp: 116, left: 10, opening: 1 }]),
+    /not ordered/u
+  )
+  assert.throws(
+    () => summarizeDrawerFrames([frames[1], { timestamp: Number.NaN, left: 10, opening: 1 }]),
+    /invalid drawer frame timestamp/u
+  )
+  assert.throws(
+    () =>
+      summarizeDrawerFrames([
+        frames[1],
+        { timestamp: 117, left: Number.POSITIVE_INFINITY, opening: 1 },
+      ]),
+    /invalid drawer frame position/u
+  )
+  assert.throws(
+    () => summarizeDrawerFrames([frames[0], { timestamp: 116, left: null, opening: null }]),
+    /not observed/u
+  )
+  assert.throws(
+    () => summarizeDrawerFrames([frames[1], { timestamp: 117, left: 10, opening: 2 }]),
+    /no consecutive frames/u
+  )
+})
+
+test("drawer phase evidence is bounded, fail-only, and preserves the first failing stage", async () => {
+  const { attachDrawerPhaseOnFailure, createDrawerPhaseTracker } = await import(
+    new URL("./mobile-drawer-rapid.ts", import.meta.url)
+  )
+  const tracker = createDrawerPhaseTracker()
+  assert.equal(createDrawerPhaseTracker("chromium").snapshot().browser, "chromium")
+  assert.equal(createDrawerPhaseTracker("private-browser").snapshot().browser, "unknown")
+  const attachments = []
+  const info = {
+    status: "passed",
+    attach: async (name, attachment) => attachments.push({ name, ...attachment }),
+  }
+  await attachDrawerPhaseOnFailure(info, tracker)
+  info.status = "skipped"
+  await attachDrawerPhaseOnFailure(info, tracker)
+  info.status = "private-status"
+  await attachDrawerPhaseOnFailure(info, tracker)
+  assert.equal(attachments.length, 0)
+
+  info.status = "failed"
+  await attachDrawerPhaseOnFailure(info, tracker)
+  assert.deepEqual(JSON.parse(attachments[0].body), {
+    kind: "test-phase",
+    schema: 1,
+    browser: "unknown",
+    input: "unknown",
+    motion: "unknown",
+    phase: "fixture",
+    iteration: null,
+    firstFailurePhase: null,
+    firstFailureIteration: null,
+    status: "failed",
+  })
+  assert.equal(attachments[0].name, "drawer-input-failure")
+  assert.equal(attachments[0].contentType, "application/json")
+
+  tracker.setCase("mouse", "reduce")
+  tracker.mark("native-input", 1)
+  tracker.fail()
+  tracker.mark("probe-stop")
+  tracker.fail()
+  info.status = "timedOut"
+  await attachDrawerPhaseOnFailure(info, tracker)
+  assert.deepEqual(JSON.parse(attachments[1].body), {
+    kind: "test-phase",
+    schema: 1,
+    browser: "unknown",
+    input: "mouse",
+    motion: "reduce",
+    phase: "probe-stop",
+    iteration: null,
+    firstFailurePhase: "native-input",
+    firstFailureIteration: 1,
+    status: "timedOut",
+  })
+  tracker.setCase("private-input", "private-motion")
+  tracker.mark("private-phase", 9000)
+  info.status = "interrupted"
+  await attachDrawerPhaseOnFailure(info, tracker)
+  const bounded = JSON.parse(attachments[2].body)
+  assert.equal(bounded.input, "unknown")
+  assert.equal(bounded.motion, "unknown")
+  assert.equal(bounded.phase, "probe-stop")
+  assert.doesNotMatch(attachments[2].body, /private/u)
+  tracker.mark("trigger", 9000)
+  assert.equal(tracker.snapshot().iteration, null)
+  await assert.doesNotReject(() =>
+    attachDrawerPhaseOnFailure(
+      {
+        status: "failed",
+        attach: async () => {
+          throw new Error("private-error")
+        },
+      },
+      tracker
+    )
+  )
+})
+
+test("drawer probe preserves native transitions and captures the first bounded pointer miss", async () => {
+  const { JSDOM } = await import("jsdom")
+  const { installDrawerProbe } = await import(new URL("./mobile-drawer-rapid.ts", import.meta.url))
+  const dom = new JSDOM(
+    `<button aria-controls="mobile-drawer" aria-expanded="true"></button>
+     <div data-brand-boot-loader data-state="exiting"></div>
+     <div id="mobile-drawer" role="dialog"><button></button><a id="mobile-nav-link-news"></a></div>`
+  )
+  const browserWindow = dom.window
+  const browserDocument = browserWindow.document
+  const savedGlobals = new Map(
+    ["window", "document", "Element"].map((name) => [
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    ])
+  )
+  for (const [name, value] of [
+    ["window", browserWindow],
+    ["document", browserDocument],
+    ["Element", browserWindow.Element],
+  ]) {
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value })
+  }
+
+  try {
+    const listeners = new Map()
+    const addEventListener = browserDocument.addEventListener.bind(browserDocument)
+    const removeEventListener = browserDocument.removeEventListener.bind(browserDocument)
+    browserDocument.addEventListener = (name, listener, options) => {
+      listeners.set(name, listener)
+      return addEventListener(name, listener, options)
+    }
+    browserDocument.removeEventListener = (name, listener, options) => {
+      if (listeners.get(name) === listener) listeners.delete(name)
+      return removeEventListener(name, listener, options)
+    }
+    let cancelledFrame = null
+    browserWindow.requestAnimationFrame = () => 7
+    browserWindow.cancelAnimationFrame = (frame) => {
+      cancelledFrame = frame
+    }
+    browserWindow.__APP_HYDRATED = true
+    Object.defineProperty(browserWindow, "CSS", { value: { supports: () => true } })
+    Object.defineProperty(browserWindow, "visualViewport", {
+      value: { width: 390, height: 844, offsetLeft: 0, offsetTop: 0, scale: 1 },
+    })
+    Object.defineProperty(browserWindow, "devicePixelRatio", { value: 2.625 })
+    Object.defineProperty(browserDocument.documentElement, "clientWidth", { value: 390 })
+    browserDocument.body.style.overflow = "hidden"
+    const link = browserDocument.getElementById("mobile-nav-link-news")
+    const drawer = browserDocument.getElementById("mobile-drawer")
+    link.getBoundingClientRect = () => ({ x: 90, y: 300, width: 200, height: 44 })
+    drawer.getBoundingClientRect = () => ({ x: 55, y: 0, width: 320, height: 844 })
+    drawer.querySelector("button").focus()
+    let hit = link
+    browserDocument.elementFromPoint = () => hit
+    browserDocument.elementsFromPoint = () => [hit, browserDocument.documentElement]
+    browserDocument.getAnimations = () => []
+    let active = false
+    const htmlMatches = browserDocument.documentElement.matches.bind(
+      browserDocument.documentElement
+    )
+    browserDocument.documentElement.matches = (selector) =>
+      selector === ":active-view-transition" ? active : htmlMatches(selector)
+    const transition = Object.defineProperties(
+      {},
+      Object.fromEntries(
+        ["ready", "updateCallbackDone", "finished"].map((key) => [
+          key,
+          { get: () => assert.fail(`probe inspected ${key}`) },
+        ])
+      )
+    )
+    let transitionGetterThrows = false
+    Object.defineProperty(browserDocument, "activeViewTransition", {
+      get: () => {
+        if (transitionGetterThrows) throw new Error("diagnostic getter failed")
+        return active ? transition : null
+      },
+    })
+    let receiverWasDocument = false
+    let nativeArguments
+    const failureUpdate = () => {}
+    const nativeFailure = new Error("native transition failed")
+    const nativeTransition = function (...args) {
+      receiverWasDocument = this === browserDocument
+      nativeArguments = args
+      if (args[0] === failureUpdate) throw nativeFailure
+      active = true
+      return transition
+    }
+    browserDocument.startViewTransition = nativeTransition
+
+    installDrawerProbe()
+    const probe = browserWindow.__drawerRapidProbe
+    assert.throws(() => installDrawerProbe(), /already running/u)
+    probe.arm("news", 140, 322)
+    const update = () => {}
+    assert.equal(browserDocument.startViewTransition(update), transition)
+    assert.equal(receiverWasDocument, true)
+    assert.deepEqual(nativeArguments, [update])
+    assert.throws(
+      () => browserDocument.startViewTransition(failureUpdate),
+      (error) => error === nativeFailure
+    )
+    transitionGetterThrows = true
+    assert.equal(browserDocument.startViewTransition(update), transition)
+    transitionGetterThrows = false
+    hit = browserDocument.documentElement
+    for (const type of ["pointermove", "pointerdown"]) {
+      listeners.get(type)({
+        isTrusted: true,
+        target: hit,
+        type,
+        timeStamp: type === "pointermove" ? 120 : 121,
+        clientX: 140,
+        clientY: 322,
+      })
+    }
+    const result = probe.stop()
+    assert.deepEqual(
+      result.diagnostic.snapshots.map(({ phase }) => phase),
+      ["ready", "pointermove", "pointerdown"]
+    )
+    assert.equal(result.diagnostic.snapshots[0].target, "news")
+    assert.equal(result.diagnostic.firstMiss.target, "root")
+    assert.equal(result.diagnostic.firstMiss.hits[0], "root")
+    assert.deepEqual(result.diagnostic.firstMiss.link.rect, {
+      x: 90,
+      y: 300,
+      width: 200,
+      height: 44,
+    })
+    assert.deepEqual(result.diagnostic.firstMiss.drawer.rect, {
+      x: 55,
+      y: 0,
+      width: 320,
+      height: 844,
+    })
+    assert.equal(result.diagnostic.firstMiss.focus.target, "drawer")
+    assert.equal(result.diagnostic.firstMiss.viewport.devicePixelRatio, 2.625)
+    assert.equal(result.diagnostic.firstMiss.viewport.visualScale, 1)
+    assert.deepEqual(result.diagnostic.firstMiss.boot, { hydrated: true, phase: "exiting" })
+    assert.deepEqual(result.diagnostic.firstMiss.transition, {
+      selector: "active",
+      activeObject: "present",
+      pseudoAnimations: 0,
+    })
+    assert.ok(result.diagnostic.transitionTimeline.some(({ kind }) => kind === "start"))
+    assert.equal(browserDocument.startViewTransition, nativeTransition)
+    assert.equal(browserWindow.__drawerRapidProbe, undefined)
+    assert.equal(cancelledFrame, 7)
+    assert.equal(listeners.has("pointerdown"), false)
+
+    installDrawerProbe()
+    const boundedProbe = browserWindow.__drawerRapidProbe
+    hit = link
+    boundedProbe.arm("news", 140, 322)
+    for (let count = 0; count < 30; count += 1) {
+      listeners.get("pointermove")({
+        isTrusted: true,
+        target: link,
+        type: "pointermove",
+        timeStamp: 200 + count,
+        clientX: 140,
+        clientY: 322,
+      })
+    }
+    hit = browserDocument.documentElement
+    listeners.get("pointerdown")({
+      isTrusted: true,
+      target: hit,
+      type: "pointerdown",
+      timeStamp: 300,
+      clientX: 140,
+      clientY: 322,
+    })
+    for (let count = 0; count < 60; count += 1) browserDocument.startViewTransition(update)
+    const boundedResult = boundedProbe.stop()
+    assert.equal(boundedResult.diagnostic.snapshots.length, 24)
+    assert.equal(boundedResult.diagnostic.snapshotOverflow, true)
+    assert.equal(boundedResult.diagnostic.firstMiss.target, "root")
+    assert.equal(boundedResult.diagnostic.transitionTimeline.length, 48)
+    assert.equal(boundedResult.diagnostic.transitionOverflow, true)
+    assert.equal(browserDocument.startViewTransition, nativeTransition)
+  } finally {
+    browserWindow.close()
+    for (const [name, descriptor] of savedGlobals) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+  }
+})

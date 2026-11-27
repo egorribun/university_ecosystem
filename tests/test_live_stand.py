@@ -1970,7 +1970,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(identities, title=private_title)
-        + "224 passed (3m)\n8 skipped\n"
+        + "236 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1982,7 +1982,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     printed = capsys.readouterr()
     expected_output = [
         "+ " + " ".join(live_stand._live_e2e_command()),
-        "live E2E counts passed=224 skipped=8",
+        "live E2E counts passed=236 skipped=8",
         *(
             f"live E2E skipped project={project} source={source} line={line_number}"
             for project, source, line_number in identities
@@ -2006,7 +2006,7 @@ def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(identities, title="private title")
-        + f"224 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
+        + f"236 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -2035,7 +2035,7 @@ def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(observed, title="private title")
-        + f"224 passed{newline}8 skipped{newline}"
+        + f"236 passed{newline}8 skipped{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -2061,7 +2061,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(substituted, title=private_title)
-        + "224 passed (3m)\n8 skipped\n"
+        + "236 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -2072,7 +2072,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
     printed = capsys.readouterr()
-    assert "live E2E counts passed=224 skipped=8" in printed.out
+    assert "live E2E counts passed=236 skipped=8" in printed.out
     assert (
         "live E2E skip accounting=failed observed=8 rejected=0 overflow=false"
         in printed.out
@@ -2086,7 +2086,8 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
 @pytest.mark.parametrize(
     ("passed", "accepted"),
     [
-        pytest.param(224, True, id="current-232-instance-inventory"),
+        pytest.param(236, True, id="current-244-instance-inventory"),
+        pytest.param(224, False, id="obsolete-232-instance-inventory"),
         pytest.param(222, False, id="obsolete-230-instance-inventory"),
         pytest.param(220, False, id="obsolete-228-instance-inventory"),
         pytest.param(216, False, id="obsolete-224-instance-inventory"),
@@ -2094,9 +2095,12 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
         pytest.param(212, False, id="obsolete-220-instance-inventory"),
         pytest.param(210, False, id="obsolete-218-instance-inventory"),
         pytest.param(190, False, id="obsolete-198-instance-inventory"),
-        pytest.param(221, False, id="three-passes-missing"),
-        pytest.param(223, False, id="one-pass-missing"),
-        pytest.param(225, False, id="one-pass-extra"),
+        pytest.param(233, False, id="three-passes-missing"),
+        pytest.param(235, False, id="one-pass-missing"),
+        pytest.param(237, False, id="one-pass-extra"),
+        pytest.param(221, False, id="previous-three-passes-missing"),
+        pytest.param(223, False, id="previous-one-pass-missing"),
+        pytest.param(225, False, id="previous-one-pass-extra"),
     ],
 )
 def test_live_playwright_full_count_matches_collected_inventory(
@@ -16687,8 +16691,8 @@ def test_stage_a_operation_case_table_matches_literal_declarations():
             for target in node.targets
         )
     )
-    assert len(table) == 58
-    assert sum(map(len, table.values())) == 87
+    assert len(table) == 59
+    assert sum(map(len, table.values())) == 93
     for source, declarations in table.items():
         lines = (
             (root / "frontend/tests/e2e-live" / source).read_text(encoding="utf-8")

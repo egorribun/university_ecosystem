@@ -16,6 +16,7 @@ import {
   waitForRegistrationCompletion,
   withRegistrationDetach,
 } from "./register-double-submit-lifecycle.mjs"
+import "./register-standard.contract.test.mjs"
 
 const specUrl = new URL("./register-double-submit.live.spec.ts", import.meta.url)
 
