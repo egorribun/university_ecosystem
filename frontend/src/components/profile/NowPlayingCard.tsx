@@ -285,28 +285,30 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               {t("profile:nowPlaying.paused")}
             </span>
           )}
-          <div className="flex items-center gap-2 w-full mt-0.5">
-            <div className="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] rounded-full overflow-hidden relative">
-              <div
-                role="progressbar"
-                aria-valuenow={progress}
-                aria-valuemin={0}
-                aria-valuemax={duration}
-                aria-label={t("profile:nowPlaying.progress")}
-                className="h-full bg-brand rounded-full origin-left will-change-transform shadow-glow-primary"
-                style={{
-                  transform: `scaleX(${pct / 100})`,
-                  transition: progressBarTransition,
-                }}
-              />
+          {data.duration_ms != null && (
+            <div className="flex items-center gap-2 w-full mt-0.5">
+              <div className="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] rounded-full overflow-hidden relative">
+                <div
+                  role="progressbar"
+                  aria-valuenow={progress}
+                  aria-valuemin={0}
+                  aria-valuemax={duration}
+                  aria-label={t("profile:nowPlaying.progress")}
+                  className="h-full bg-brand rounded-full origin-left will-change-transform shadow-glow-primary"
+                  style={{
+                    transform: `scaleX(${pct / 100})`,
+                    transition: progressBarTransition,
+                  }}
+                />
+              </div>
+              <span
+                className="np-time text-xs text-text-tertiary whitespace-nowrap tabular-nums shrink-0"
+                style={{ width: maxTimeWidth }}
+              >
+                {fmt(progress)} / {fmt(duration)}
+              </span>
             </div>
-            <span
-              className="np-time text-xs text-text-tertiary whitespace-nowrap tabular-nums shrink-0"
-              style={{ width: maxTimeWidth }}
-            >
-              {fmt(progress)} / {fmt(duration)}
-            </span>
-          </div>
+          )}
         </div>
       </m.div>
     </a>

@@ -128,14 +128,14 @@ describe("NowPlayingCard — production animation and defensive paths", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1000")
   })
 
-  it("normalizes nullable duration, track id, and progress inputs", () => {
+  it("keeps the track link without timing when the duration is omitted", () => {
     render(
       <NowPlayingCard
         data={makeData({ duration_ms: undefined, track_id: null, progress_ms: null })}
       />
     )
 
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "0")
+    expect(screen.getByRole("link")).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
   })
 })

@@ -57,6 +57,30 @@ describe("NowPlayingCard", () => {
     expect(bar).toHaveAttribute("aria-valuemax", "180000")
   })
 
+  it("keeps the last known track visible without presenting missing playback timing", () => {
+    const { rerender } = render(
+      <NowPlayingCard
+        data={makeData({ is_playing: false, duration_ms: null, progress_ms: null })}
+      />
+    )
+    expect(screen.getByText("Bohemian Rhapsody")).toBeInTheDocument()
+    expect(screen.getByText("Queen")).toBeInTheDocument()
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      "https://open.spotify.com/track/track-1"
+    )
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+    expect(screen.queryByText("0:00 / 0:00")).not.toBeInTheDocument()
+
+    rerender(
+      <NowPlayingCard
+        data={makeData({ is_playing: false, duration_ms: 180_000, progress_ms: 0 })}
+      />
+    )
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
+    expect(screen.getByText("0:00 / 3:00")).toBeInTheDocument()
+  })
+
   it("clamps progress to duration and reflects it on the progressbar", () => {
     render(<NowPlayingCard data={makeData({ is_playing: false, progress_ms: 999_999 })} />)
     const bar = screen.getByRole("progressbar")
