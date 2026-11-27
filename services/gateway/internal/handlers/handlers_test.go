@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
@@ -455,11 +456,13 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("code_%s", tc.grpcCode), func(t *testing.T) {
 				dummyConn := &grpc.ClientConn{}
+				const privateDetail = "accounts/4d36db70-b8c3-4fa6-8b58-94fa41dd38c1/source.png"
 				mockClient := &mockFileProcessingServiceClient{
-					err: status.Error(tc.grpcCode, "some grpc error"),
+					err: status.Error(tc.grpcCode, privateDetail),
 				}
+				var logs bytes.Buffer
 				router := gin.New()
-				router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
+				router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logging.NewJSONLogger(&logs, nil)))
 
 				w := httptest.NewRecorder()
 				reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
@@ -469,6 +472,8 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 				assert.Equal(t, tc.wantHTTP, w.Code)
 				assert.Contains(t, w.Body.String(), tc.wantMsg)
+				assert.NotContains(t, logs.String(), privateDetail)
+				assert.Contains(t, logs.String(), `"grpc_code":"`+tc.grpcCode.String()+`"`)
 			})
 		}
 	})

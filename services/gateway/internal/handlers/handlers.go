@@ -233,36 +233,37 @@ func writeFileProcessError(c *gin.Context, logger *slog.Logger, err error) {
 	// PERF-W5-03: Map gRPC status codes to semantically correct HTTP codes.
 	// Load balancers and monitoring treat 504 vs 500 very differently — 504
 	// triggers upstream-timeout alerts and retries, 500 triggers error-rate alerts.
-	switch status.Code(err) {
+	code := status.Code(err)
+	switch code {
 	case codes.DeadlineExceeded:
-		logger.WarnContext(c.Request.Context(), "gRPC upstream timeout", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC upstream timeout", "grpc_code", code.String())
 		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "upstream_timeout"})
 	case codes.Unavailable:
-		logger.WarnContext(c.Request.Context(), "gRPC upstream unavailable", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC upstream unavailable", "grpc_code", code.String())
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
 	case codes.PermissionDenied, codes.Unauthenticated:
-		logger.WarnContext(c.Request.Context(), "gRPC permission denied", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC permission denied", "grpc_code", code.String())
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 	case codes.ResourceExhausted:
-		logger.WarnContext(c.Request.Context(), "gRPC resource exhausted", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC resource exhausted", "grpc_code", code.String())
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
 	case codes.InvalidArgument:
-		logger.WarnContext(c.Request.Context(), "gRPC invalid argument", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC invalid argument", "grpc_code", code.String())
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_argument"})
 	case codes.NotFound:
-		logger.WarnContext(c.Request.Context(), "gRPC resource not found", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC resource not found", "grpc_code", code.String())
 		c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
 	case codes.AlreadyExists:
-		logger.WarnContext(c.Request.Context(), "gRPC resource already exists", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC resource already exists", "grpc_code", code.String())
 		c.JSON(http.StatusConflict, gin.H{"error": "already_exists"})
 	case codes.Unimplemented:
-		logger.WarnContext(c.Request.Context(), "gRPC method unimplemented", "err", err)
+		logger.WarnContext(c.Request.Context(), "gRPC method unimplemented", "grpc_code", code.String())
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "unimplemented"})
 	case codes.OK, codes.Canceled, codes.Unknown, codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Internal, codes.DataLoss:
 		// Fall through to the default handler for uncommon/unexpected codes.
 		fallthrough
 	default:
-		logger.ErrorContext(c.Request.Context(), "gRPC call failed", "err", err)
+		logger.ErrorContext(c.Request.Context(), "gRPC call failed", "grpc_code", code.String())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
 	}
 }
