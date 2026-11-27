@@ -272,6 +272,30 @@ describe("ReactionPill long-press gesture and reactor list", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
   })
 
+  it("cancels a pending long-press when the reaction pill unmounts", () => {
+    const setTimer = vi.spyOn(globalThis, "setTimeout")
+    const clearTimer = vi.spyOn(globalThis, "clearTimeout")
+    try {
+      const { unmount } = renderPill()
+      const callsBeforePress = setTimer.mock.calls.length
+      fireEvent.pointerDown(screen.getByRole("button"), { pointerType: "touch" })
+      const index = setTimer.mock.calls.findIndex(
+        ([, delay], callIndex) => callIndex >= callsBeforePress && delay === 500
+      )
+      expect(index).toBeGreaterThanOrEqual(0)
+      const pendingTimer = setTimer.mock.results[index]?.value
+      expect(pendingTimer).toBeDefined()
+      expect(clearTimer.mock.calls.some(([timer]) => timer === pendingTimer)).toBe(false)
+
+      unmount()
+
+      expect(clearTimer.mock.calls.some(([timer]) => timer === pendingTimer)).toBe(true)
+    } finally {
+      setTimer.mockRestore()
+      clearTimer.mockRestore()
+    }
+  })
+
   it("cancels the long-press when the touch ends early", () => {
     renderPill()
     const btn = screen.getByRole("button")
