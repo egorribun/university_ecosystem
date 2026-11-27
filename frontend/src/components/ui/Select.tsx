@@ -227,7 +227,7 @@ const Select = ({
         role="combobox"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        aria-controls={listboxId}
+        aria-controls={isOpen ? listboxId : undefined}
         aria-activedescendant={
           isOpen && activeIndex !== undefined ? computeOptionId(activeIndex) : undefined
         }
