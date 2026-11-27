@@ -16,9 +16,9 @@ import { useSwipeGesture } from "./useSwipeGesture"
  * When ``enabled=false`` the hook becomes inert — no offset, no callback.
  */
 
-const touch = (clientX: number) =>
+const touch = (...positions: number[]) =>
   ({
-    touches: [{ clientX }],
+    touches: positions.map((clientX) => ({ clientX })),
   }) as unknown as React.TouchEvent
 
 describe("useSwipeGesture — disabled", () => {
@@ -35,7 +35,7 @@ describe("useSwipeGesture — disabled", () => {
     act(() => {
       result.current.handlers.onTouchStart(touch(100))
       result.current.handlers.onTouchMove(touch(300))
-      result.current.handlers.onTouchEnd()
+      result.current.handlers.onTouchEnd(touch())
     })
 
     expect(result.current.dragOffset).toBe(0)
@@ -108,7 +108,7 @@ describe("useSwipeGesture — direction='right'", () => {
     expect(result.current.dragOffset).toBe(120)
 
     act(() => {
-      result.current.handlers.onTouchEnd()
+      result.current.handlers.onTouchEnd(touch())
     })
     expect(onSwipeClose).toHaveBeenCalledOnce()
     expect(result.current.dragOffset).toBe(0)
@@ -133,7 +133,7 @@ describe("useSwipeGesture — direction='right'", () => {
       result.current.handlers.onTouchMove(touch(40))
     })
     act(() => {
-      result.current.handlers.onTouchEnd()
+      result.current.handlers.onTouchEnd(touch())
     })
     expect(onSwipeClose).not.toHaveBeenCalled()
     expect(result.current.dragOffset).toBe(0)
@@ -178,7 +178,7 @@ describe("useSwipeGesture — direction='left'", () => {
       result.current.handlers.onTouchMove(touch(50)) // delta = -150
     })
     act(() => {
-      result.current.handlers.onTouchEnd()
+      result.current.handlers.onTouchEnd(touch())
     })
     expect(onSwipeClose).toHaveBeenCalledOnce()
   })
@@ -239,7 +239,7 @@ describe("useSwipeGesture — returning to the starting point", () => {
 
       act(() => result.current.handlers.onTouchMove(touch(startX)))
       expect(result.current.dragOffset).toBe(0)
-      act(() => result.current.handlers.onTouchEnd())
+      act(() => result.current.handlers.onTouchEnd(touch()))
 
       expect(onSwipeClose).not.toHaveBeenCalled()
       expect(result.current.isDragging).toBe(false)
@@ -292,7 +292,7 @@ describe("useSwipeGesture: reversing past the starting point", () => {
       act(() => result.current.handlers.onTouchMove(touch(pastOriginX)))
       expect(result.current.dragOffset).toBe(0)
 
-      act(() => result.current.handlers.onTouchEnd())
+      act(() => result.current.handlers.onTouchEnd(touch()))
       expect(onSwipeClose).not.toHaveBeenCalled()
       expect(result.current.dragOffset).toBe(0)
       expect(result.current.isDragging).toBe(false)
@@ -330,15 +330,72 @@ describe("useSwipeGesture — browser cancellation", () => {
     expect(onSwipeClose).not.toHaveBeenCalled()
 
     fireEvent.touchMove(drawer, moved)
-    fireEvent.touchEnd(drawer)
+    fireEvent.touchEnd(drawer, { touches: [] })
     expect(onSwipeClose).not.toHaveBeenCalled()
     expect(drawer.dataset.offset).toBe("0")
 
     fireEvent.touchStart(drawer, start)
     fireEvent.touchMove(drawer, moved)
-    fireEvent.touchEnd(drawer)
+    fireEvent.touchEnd(drawer, { touches: [] })
     expect(onSwipeClose).toHaveBeenCalledOnce()
     expect(drawer.dataset.offset).toBe("0")
     expect(drawer.dataset.dragging).toBe("false")
   })
+})
+
+describe("useSwipeGesture — multi-touch", () => {
+  it.each(["start", "move", "end"] as const)(
+    "cancels the drag when touch%s first reveals a second contact",
+    (phase) => {
+      const onSwipeClose = vi.fn()
+      function Drawer() {
+        const { handlers, dragOffset, isDragging } = useSwipeGesture({
+          direction: "right",
+          onSwipeClose,
+          enabled: true,
+        })
+        return createElement("div", {
+          ...handlers,
+          "data-testid": "drawer",
+          "data-offset": dragOffset,
+          "data-dragging": String(isDragging),
+        })
+      }
+      render(createElement(Drawer))
+      const drawer = screen.getByTestId("drawer")
+      const first = { identifier: 1, clientX: 100 }
+      const moved = { ...first, clientX: 220 }
+      const second = { identifier: 2, clientX: 150 }
+
+      fireEvent.touchStart(drawer, { touches: [first], changedTouches: [first] })
+      fireEvent.touchMove(drawer, { touches: [moved], changedTouches: [moved] })
+      expect(drawer.dataset.offset).toBe("120")
+
+      if (phase === "start") {
+        fireEvent.touchStart(drawer, { touches: [moved, second], changedTouches: [second] })
+      } else if (phase === "move") {
+        fireEvent.touchMove(drawer, { touches: [moved, second], changedTouches: [moved] })
+      } else {
+        fireEvent.touchEnd(drawer, { touches: [second], changedTouches: [moved] })
+      }
+      expect(onSwipeClose).not.toHaveBeenCalled()
+      expect(drawer.dataset.offset).toBe("0")
+      expect(drawer.dataset.dragging).toBe("false")
+
+      if (phase !== "end") {
+        if (phase === "start") {
+          fireEvent.touchEnd(drawer, { touches: [moved], changedTouches: [second] })
+        }
+        const movedAgain = { ...moved, clientX: 340 }
+        fireEvent.touchMove(drawer, { touches: [movedAgain], changedTouches: [movedAgain] })
+        fireEvent.touchEnd(drawer, { touches: [], changedTouches: [movedAgain] })
+        expect(onSwipeClose).not.toHaveBeenCalled()
+      }
+
+      fireEvent.touchStart(drawer, { touches: [first], changedTouches: [first] })
+      fireEvent.touchMove(drawer, { touches: [moved], changedTouches: [moved] })
+      fireEvent.touchEnd(drawer, { touches: [], changedTouches: [moved] })
+      expect(onSwipeClose).toHaveBeenCalledOnce()
+    }
+  )
 })

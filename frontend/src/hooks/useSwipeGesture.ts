@@ -20,7 +20,7 @@ interface SwipeGestureResult {
   handlers: {
     onTouchStart: (e: React.TouchEvent) => void
     onTouchMove: (e: React.TouchEvent) => void
-    onTouchEnd: () => void
+    onTouchEnd: (e: React.TouchEvent) => void
     onTouchCancel: () => void
   }
 }
@@ -39,29 +39,41 @@ export function useSwipeGesture({
   const [isDragging, setIsDragging] = useState(false)
   const startX = useRef(0)
 
+  const onTouchCancel = useCallback(() => {
+    setDragOffset(0)
+    setIsDragging(false)
+  }, [])
+
   // A drawer may close from Escape or its close button before touchend arrives.
   // Clear the transient gesture so reopening cannot reuse the old drag offset.
   useEffect(() => {
     if (!enabled) {
-      setDragOffset(0)
-      setIsDragging(false)
+      onTouchCancel()
     }
-  }, [enabled])
+  }, [enabled, onTouchCancel])
 
   const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (!enabled) return
+      if (e.touches.length > 1) {
+        onTouchCancel()
+        return
+      }
       const touch = e.touches[0]
       if (!touch) return
       startX.current = touch.clientX
       setIsDragging(true)
     },
-    [enabled]
+    [enabled, onTouchCancel]
   )
 
   const onTouchMove = useCallback(
     (e: React.TouchEvent) => {
       if (!enabled || !isDragging) return
+      if (e.touches.length > 1) {
+        onTouchCancel()
+        return
+      }
       const touch = e.touches[0]
       if (!touch) return
       const delta = touch.clientX - startX.current
@@ -75,22 +87,19 @@ export function useSwipeGesture({
         setDragOffset(0)
       }
     },
-    [enabled, isDragging, direction]
+    [enabled, isDragging, direction, onTouchCancel]
   )
 
-  const onTouchCancel = useCallback(() => {
-    setDragOffset(0)
-    setIsDragging(false)
-  }, [])
-
-  const onTouchEnd = useCallback(() => {
-    const absOffset = Math.abs(dragOffset)
-    if (enabled && absOffset > threshold) {
-      onSwipeClose()
-    }
-    setDragOffset(0)
-    setIsDragging(false)
-  }, [enabled, dragOffset, threshold, onSwipeClose])
+  const onTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      const absOffset = Math.abs(dragOffset)
+      if (enabled && e.touches.length === 0 && absOffset > threshold) {
+        onSwipeClose()
+      }
+      onTouchCancel()
+    },
+    [enabled, dragOffset, threshold, onSwipeClose, onTouchCancel]
+  )
 
   return {
     dragOffset,
