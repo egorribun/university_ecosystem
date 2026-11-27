@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, act } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -92,6 +93,10 @@ describe("MessageInput branch coverage", () => {
       expect(clickSpy).toHaveBeenCalledTimes(1)
       // Menu closed after selection.
       expect(screen.queryByText("messenger:attachPhoto")).toBeNull()
+      expect(screen.getByRole("button", { name: "messenger:aria.attachments" })).toHaveAttribute(
+        "aria-expanded",
+        "false"
+      )
       clickSpy.mockRestore()
     })
 
@@ -121,13 +126,22 @@ describe("MessageInput branch coverage", () => {
       clickSpy.mockRestore()
     })
 
-    it("toggles the menu closed when the attach button is clicked again (showAttachMenu false branch)", () => {
+    it("reports the disclosure state as Enter and Space toggle the attachment options", async () => {
+      const user = userEvent.setup()
       render(<MessageInput onSend={() => {}} />)
       const attachBtn = screen.getByRole("button", { name: "messenger:aria.attachments" })
-      fireEvent.click(attachBtn)
-      expect(screen.getByText("messenger:attachPhoto")).toBeTruthy()
-      fireEvent.click(attachBtn)
-      expect(screen.queryByText("messenger:attachPhoto")).toBeNull()
+
+      expect(attachBtn).toHaveAttribute("aria-expanded", "false")
+      await user.tab()
+      expect(attachBtn).toHaveFocus()
+
+      await user.keyboard("{Enter}")
+      expect(attachBtn).toHaveAttribute("aria-expanded", "true")
+      expect(screen.getByRole("button", { name: "messenger:attachPhoto" })).toBeVisible()
+
+      await user.keyboard(" ")
+      expect(attachBtn).toHaveAttribute("aria-expanded", "false")
+      expect(screen.queryByRole("button", { name: "messenger:attachPhoto" })).toBeNull()
     })
   })
 
