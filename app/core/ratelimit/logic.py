@@ -91,7 +91,7 @@ async def check_rate_limit(
                 cb.record_failure(admission)
                 _log.warning(
                     "rate_limit_storage_unavailable_fallback",
-                    extra={"identifier": identifier, "error": str(exc)},
+                    extra={"error_type": type(exc).__name__},
                 )
             else:
                 cb.record_success(admission)
@@ -101,7 +101,7 @@ async def check_rate_limit(
         else:
             _log.debug(
                 "rate_limit_circuit_open_fallback",
-                extra={"identifier": identifier, "state": cb.state.name},
+                extra={"state": cb.state.name},
             )
 
         # PERF-30-01: Circuit open or Redis failure — fail-closed with 50% local limit.
@@ -149,7 +149,7 @@ async def enforce_rate_limit(
                 cb.record_failure(admission)
                 _log.warning(
                     "rate_limit_storage_unavailable_fallback",
-                    extra={"identifier": identifier, "error": str(exc)},
+                    extra={"error_type": type(exc).__name__},
                 )
                 # PERF-30-01: Circuit breaker recorded failure — use 50% fallback.
                 fallback_limit = max(limit // 2, 1)
