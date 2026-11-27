@@ -170,6 +170,13 @@ function expectActivePanel(tab: HTMLElement, heading: string) {
   expect(screen.getAllByRole("tab", { selected: true })).toEqual([tab])
   for (const other of screen.getAllByRole("tab")) {
     expect(other).toHaveAttribute("tabindex", other === tab ? "0" : "-1")
+    const targetId = other.getAttribute("aria-controls")
+    expect(targetId).toBeTruthy()
+    const targets = document.querySelectorAll(`[id="${targetId}"]`)
+    expect(targets).toHaveLength(1)
+    expect(targets[0]).toHaveAttribute("role", "tabpanel")
+    expect(targets[0]).toHaveAttribute("aria-labelledby", other.id)
+    if (other !== tab) expect(targets[0]).not.toBeVisible()
   }
   const panel = screen.getByRole("tabpanel")
   expect(tab.id).not.toBe("")

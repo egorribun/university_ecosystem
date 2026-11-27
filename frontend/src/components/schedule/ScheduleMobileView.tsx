@@ -242,6 +242,18 @@ export function ScheduleMobileView({
                 : { type: "spring", stiffness: 260, damping: 26, mass: 0.9 }
             }
           >
+            {/* Keep targets together during exit, including days that may be unhidden. */}
+            {weekdayBackend.map((day, i) =>
+              i === activeDayIdx ? null : (
+                <div
+                  key={day}
+                  id={`day-panel-${day}`}
+                  role="tabpanel"
+                  aria-labelledby={visibleDayIndices.includes(i) ? `day-tab-${day}` : undefined}
+                  hidden
+                />
+              )
+            )}
             {(() => {
               const activeDay = weekdayBackend[activeDayIdx]!
               const activeLabel = weekdayLabels[activeDayIdx] ?? activeDay
