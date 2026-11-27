@@ -134,6 +134,34 @@ describe("useEventFilterPopover", () => {
     expect(translationMock).toHaveBeenCalledWith("events:filters.dateRange")
   })
 
+  it("gives the filter dialog an accessible name", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+    await user.click(screen.getByRole("button", { name: "open filters" }))
+
+    expect(screen.getByRole("dialog", { name: "events:filters.title" })).toBeInTheDocument()
+  })
+
+  it("exposes the current date on open, selection, and reset", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} initialDateRange="today" />
+    )
+    await user.click(screen.getByRole("button", { name: "open filters" }))
+
+    const selectedDate = () => screen.getByRole("button", { pressed: true })
+    expect(selectedDate()).toHaveAccessibleName("events:filters.today")
+    const week = screen.getByRole("button", { name: "events:filters.thisWeek", pressed: false })
+    await user.click(week)
+    expect(selectedDate()).toBe(week)
+    expect(
+      screen.getByRole("button", { name: "events:filters.today", pressed: false })
+    ).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.reset" }))
+    expect(selectedDate()).toHaveAccessibleName("events:filters.allDates")
+  })
+
   it("fires onDateRangeChange with the right range for each quick-button", async () => {
     const user = userEvent.setup()
     const onDateRangeChange = vi.fn<(v: EventDateRange) => void>()

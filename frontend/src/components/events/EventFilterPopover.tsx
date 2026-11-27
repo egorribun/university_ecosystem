@@ -91,6 +91,7 @@ export function useEventFilterPopover({
           ref={setFloating}
           style={floatingStyles}
           {...getFloatingProps()}
+          aria-label={t("events:filters.title")}
           className="z-modal min-w-64 rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-heavy)*100%)] p-4 shadow-glass backdrop-blur-xl"
         >
           <div className="space-y-4">
@@ -104,6 +105,7 @@ export function useEventFilterPopover({
                   <button
                     key={opt.value}
                     type="button"
+                    aria-pressed={dateRange === opt.value}
                     onClick={() => onDateRangeChange(opt.value)}
                     className={cn(
                       "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-brand",
