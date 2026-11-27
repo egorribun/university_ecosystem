@@ -207,7 +207,9 @@ async def test_ensure_access_token_refresh_success_and_circuit_open() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -> None:
+async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     from app.api import spotify
 
     db = AsyncMock()
@@ -257,6 +259,16 @@ async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -
     assert downgraded_user.spotify.access_token is None
     assert downgraded_user.spotify.refresh_token is None
     db.commit.assert_awaited_once()
+
+    (warning,) = [
+        record.getMessage()
+        for record in caplog.records
+        if "Spotify token refresh returned downgraded scope" in record.getMessage()
+    ]
+    assert str(downgraded_user.id) not in warning
+    assert "user-read-email" not in warning
+    assert "user-read-playback-state" not in warning
+    assert "'missing_scope_count': 1" in warning
 
 
 @pytest.mark.asyncio
