@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import {
@@ -67,6 +67,13 @@ export function ReactionPill({
   const [isOpen, setIsOpen] = useState(false)
   const longPressFiredRef = useRef(false)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+  useEffect(() => clearLongPress, [clearLongPress])
 
   const {
     refs: { setReference, setFloating },
@@ -103,13 +110,6 @@ export function ReactionPill({
     enabled: isOpen && !!chatId,
   })
 
-  const clearLongPress = () => {
-    if (longPressTimerRef.current !== null) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }
-
   const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     // Mouse uses hover (above) — gate the long-press timer to touch/pen so a
     // desktop press-hold doesn't double-trigger.
@@ -117,6 +117,7 @@ export function ReactionPill({
     longPressFiredRef.current = false
     clearLongPress()
     longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null
       longPressFiredRef.current = true
       setIsOpen(true)
     }, LONG_PRESS_MS)
