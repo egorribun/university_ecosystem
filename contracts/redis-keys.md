@@ -234,18 +234,13 @@ normalized request parameters.
 | Key Pattern | TTL | Owner (write) | Readers | Purpose |
 |-------------|-----|---------------|---------|---------|
 | `events:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python events list endpoint (`app/api/events.py`) | Python events API | Localized, parameterized event list response |
-| `ue:events:my:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python personal events endpoint (`app/api/events.py`) | Python events API | Authenticated user's event list response; user and tenant context are in the parameter digest |
-| `ue:events:detail:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python event detail endpoint (`app/api/events.py`) | Python events API | Event detail response |
 | `news:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python news list endpoint (`app/api/news.py`) | Python news API | Localized, parameterized news list response |
 | `ue:news:item:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python news item endpoint (`app/api/news.py`) | Python news API | News item response |
 | `ue:stories:list:{version}:{locale}:{sha256}` | At most 300s; shorter positive configured default applies, and tiered caching also respects the shorter positive L1 TTL | Python stories endpoint (`app/api/stories.py`) | Python stories API | Localized stories response |
-| `ue:news:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python cache warmup (`app/services/cache_warmup.py`) | Not consumed by the current news-list endpoint | Startup warmup's news-page entry |
-| `ue:events:list:{version}:{locale}:{sha256}` | Configured `cache_default_ttl_seconds` (default 300s) | Python cache warmup (`app/services/cache_warmup.py`) | Not consumed by the current events-list endpoint | Startup warmup's events-page entry |
 
-The warmup and endpoint list prefixes currently differ (`ue:news:list` versus
-`news:list`, and `ue:events:list` versus `events:list`). The key builder preserves
-the supplied prefix, so these startup entries do not warm those request paths.
-This records the current implementation gap; it does not certify cache warmup.
+Startup warmup writes only the news-list entry, with the endpoint prefix `news:list`
+(`app/services/cache_warmup.py`). It does not warm event lists, because they carry the
+user's attendance data. Private event detail and personal event responses are not cached.
 
 The TTL column records the current configured default, not a fixed invariant;
 `cache_default_ttl_seconds` is runtime-configurable. The generator and writers

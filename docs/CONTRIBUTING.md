@@ -28,7 +28,7 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 - **Unit & Component Testing**:
   - Run `npm run test --prefix frontend` (Vitest suite covering pages, hooks, components, and i18n translation parity).
   - Translation tests in `src/tests/pageTranslations.test.tsx` verify localized copy across `en` and `ru`.
-- **Validation**: Frontend schemas use **Valibot** (Zod has been completely removed).
+- **Validation**: Frontend schemas use **Valibot**; no application code imports Zod. A Zod compatibility shim remains only as a React Compiler dependency override in `frontend/package.json` ([ADR-048](adr/ADR-048-react-compiler-schema-compatibility.md)).
 - **Bundle Budget**: Frontend main JS chunk must stay under **500 KB** (enforced in CI via bundle analysis).
 
 ### ⚡ Local Fast Preflight
@@ -89,7 +89,7 @@ and are outside the MVP blocking release gate.
 - **Linting**: `.golangci.yml` with `exhaustive` and `gosec` linters. Run `golangci-lint run ./...` inside service directories.
 - **Unit & Integration Testing**:
   - `go test ./...` in each service directory.
-  - `make test-integration` (runs ADR-022 Testcontainers-go integration suite covering NATS, Redis, and S3 storage on SeaweedFS).
+  - `make test-integration` in `services/gateway`, `services/ws-hub` or `services/file-processor` (runs the ADR-022 Testcontainers-go integration suite covering NATS, Redis, and S3 storage on SeaweedFS).
 
 ---
 

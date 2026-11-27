@@ -9,6 +9,7 @@ import {
   stubBreachedPasswordLookup,
 } from "./fixtures"
 import {
+  NATIVE_PUSH_NOTIFICATION_WAIT_MS,
   PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS,
   livePushObservationBudgetMs,
   test,
@@ -833,7 +834,7 @@ test("chat message reaches Chromium through its real push subscription", async (
               .length
           }, expectedNotificationId),
         {
-          timeout: 60_000,
+          timeout: NATIVE_PUSH_NOTIFICATION_WAIT_MS,
           message: "a real Web Push shows a notification tagged with its persisted identity",
         }
       )
@@ -1339,7 +1340,7 @@ test("quoted group author gets one chat.reply push with group context and no gen
               .length
           }, expectedNotificationId),
         {
-          timeout: 60_000,
+          timeout: NATIVE_PUSH_NOTIFICATION_WAIT_MS,
           message: "the native reply push is tagged with the persisted notification identity",
         }
       )

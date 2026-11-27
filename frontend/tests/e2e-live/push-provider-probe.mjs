@@ -12,7 +12,8 @@ import { expect } from "@playwright/test"
 const PROJECTS = new Set(["desktop", "mobile"])
 const SCENARIOS = { topics: "setup", chat: "chat", reply: "reply" }
 const PROBE_TAG_PREFIX = "live-push-provider-probe-"
-const NOTIFICATION_WAIT_MS = 30_000
+// FCM can take longer than 30 s to deliver an accepted push (owner decision, 2026-11-26).
+const NOTIFICATION_WAIT_MS = 60_000
 const MAX_RATE_LIMIT_WAIT_MS = 65_000
 // One probe plus up to two resubscribes, each followed by a fresh probe.
 const MAX_ATTEMPTS = 3

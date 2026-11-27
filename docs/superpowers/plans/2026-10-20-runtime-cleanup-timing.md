@@ -1,5 +1,7 @@
 # Runtime cleanup and CI timing reconciliation
 
+> **Status (2026-11-26): paused at the owner's request** (see the end of this file). AUD-125 and AUD-126 remain tests-first here.
+
 ## AUD-091 tests first
 
 Seven appended cases exercise the actual sequential shutdown function with isolated finalizers and one real background task. DI-close, later asynchronous cache, and synchronous webpush failures must leave the original RuntimeError observable while every later independent finalizer is attempted exactly once in order. The success control preserves readiness, scheduler, CDC stop, background cancellation and existing cleanup order. The DI marker must be set before close and remain set after a failure.

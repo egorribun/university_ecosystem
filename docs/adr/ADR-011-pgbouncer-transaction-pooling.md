@@ -15,7 +15,7 @@ The existing `pool_timeout=30s` in `app/core/database.py` mitigates worker-level
 
 ## Decision
 
-Deploy the maintained **edoburu/pgbouncer v1.25.2-p0** image in **transaction-mode pooling** between the application tier and PostgreSQL:
+Deploy the maintained **edoburu/pgbouncer** image (pinned by digest in `docker-compose.prod.yml`, currently v1.26.0-p0) in **transaction-mode pooling** between the application tier and PostgreSQL:
 
 - `POOL_MODE=transaction` — each transaction gets a server connection; connection released immediately after `COMMIT`/`ROLLBACK`
 - `MAX_CLIENT_CONN=1000` — supports burst of up to 1000 application connections

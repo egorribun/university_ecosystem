@@ -10,10 +10,10 @@ Backend-to-backend communication (e.g., `ws-hub` calling the backend internal AP
 We integrated the **sony/gobreaker** library in Go clients interacting with internal APIs.
 
 Configuration:
-1. **Failure Threshold**: 10 consecutive failures trip the breaker.
-2. **Timeout**: Breaker stays `Open` for 60s before transitioning to `Half-Open`.
-3. **Success Threshold**: 1 successful call in `Half-Open` state closes the breaker.
-4. **Fallback**: Requests return a `503 Service Unavailable` immediately while the breaker is open.
+1. **Failure Threshold**: more than 10 consecutive failures (the 11th) trip the breaker.
+2. **Timeout**: Breaker stays `Open` for 10s before transitioning to `Half-Open`.
+3. **Half-Open probes**: `Half-Open` admits up to 5 requests (`MaxRequests: 5`) before deciding.
+4. **Fallback**: While the breaker is open, room authorization fails closed: `CanJoinRoom` returns `false` without calling the backend.
 
 ## Rationale
 1. **Resilience**: Prevents a single slow service from bringing down the entire ecosystem.

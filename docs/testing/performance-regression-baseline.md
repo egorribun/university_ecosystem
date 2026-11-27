@@ -1,7 +1,9 @@
 # Performance regression comparison
 
 The required performance jobs compare paired evidence from exact immutable base
-and candidate revisions. They do not use a mutable, stored main-branch baseline.
+and candidate revisions. They do not use a mutable, stored main-branch baseline. The main-push
+`publish-performance-history` job in `.github/workflows/benchmark.yml` records benchmark history for
+trends; the required comparisons never read it.
 
 ## Native optimizer
 

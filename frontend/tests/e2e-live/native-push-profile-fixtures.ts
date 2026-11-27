@@ -141,14 +141,23 @@ async function canonicalTemporaryRoot(): Promise<string> {
 export const PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS = 60_000
 
 /**
+ * Bound for one native Web Push notification to reach the recipient service
+ * worker. FCM delivery to Chrome took longer than 60 s on hosted runs even after
+ * the provider accepted the push, so the owner raised this bound to 120 s
+ * (2026-11-26). The poll still requires exactly one notification with the
+ * persisted identity.
+ */
+export const NATIVE_PUSH_NOTIFICATION_WAIT_MS = 120_000
+
+/**
  * Minimum test budget for a spec that drives a real native Push profile. Such a
- * test waits on up to two FCM-bound steps (a subscription save or a native
- * delivery poll, each bounded at 60 s) besides account setup and cleanup, so the
+ * test waits on a subscription save (60 s) and a native delivery poll
+ * (NATIVE_PUSH_NOTIFICATION_WAIT_MS) besides account setup and cleanup, so the
  * suite-wide 60 s test timeout cannot hold the step budgets it declares: on hosted
  * runs where FCM registration is slow, the test timed out inside a bounded step.
  * Each step keeps its own bound; a spec may still set a larger budget itself.
  */
-export const NATIVE_PUSH_TEST_TIMEOUT_MS = 180_000
+export const NATIVE_PUSH_TEST_TIMEOUT_MS = 240_000
 
 export const NATIVE_PUSH_BROWSER_ARGS = ["--disable-features=NativeNotifications"] as const
 

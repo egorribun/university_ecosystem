@@ -699,7 +699,7 @@ test("failure observation is captured before cleanup around each unchanged nativ
         .search(
           /failureObservation = nativePushProfiles\.armFailureObservation\(\s*expectedNotificationId,/u
         )
-    const timeoutIndex = scenario.indexOf("timeout: 60_000", armIndex)
+    const timeoutIndex = scenario.indexOf("timeout: NATIVE_PUSH_NOTIFICATION_WAIT_MS", armIndex)
     const pollSuccess = scenario.indexOf(".toBe(1)", timeoutIndex)
     const disarmIndex = scenario.indexOf("failureObservation.disarm()", pollSuccess)
     const catchIndex = scenario.indexOf("} catch (error) {", disarmIndex)

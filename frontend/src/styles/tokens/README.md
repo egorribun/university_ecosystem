@@ -88,7 +88,7 @@ including the `inset` variant:
   outline: none;
   box-shadow:
     inset var(--focus-ring-default),
-    inset 0 0 8px var(--brand-glow);
+    inset 0 0 8px var(--color-brand);
 }
 ```
 

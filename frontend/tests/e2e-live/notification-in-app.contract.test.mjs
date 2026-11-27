@@ -205,7 +205,7 @@ test("native delivery failures report bounded redacted observations before clean
     /await Promise\.all\(\[\s*reportLivePushDeliveryObservation\(primary\.page, testInfo\.project\.name, expectedTag\),\s*onCapture\?\.\(\),?\s*\]\)/u
   )
   assert.equal((observation.match(/reportLivePushDeliveryObservation\(/gu) ?? []).length, 1)
-  assert.match(wait, /timeout: 60_000/u)
+  assert.match(wait, /timeout: NATIVE_PUSH_NOTIFICATION_WAIT_MS/u)
   assert.match(wait, /\.toBe\(1\)/u)
   assert.doesNotMatch(wait, /probeSubscribe|console\.|JSON\.stringify/u)
 })

@@ -135,7 +135,7 @@ useEffect(() => {
 
 ### 5.3. Bundle Budget & Dynamic Imports
 
-- **Main JS Chunk Budget**: Main JS bundle chunk must remain strictly **<500 KB** (enforced by CI bundle-analysis gate MOD-23-06).
+- **Main JS Chunk Budget**: Main JS bundle chunk must stay within **500 KiB** raw (enforced by the CI bundle budget gate `frontend/scripts/check-bundle-budget.mjs`).
 - **Dynamic Imports**: Large third-party libraries must be dynamically imported on demand:
   - PDF Generation: `await import("jspdf")`
   - Map Engine: `React.lazy(() => import("@/components/map/MapLibreMap"))`
@@ -228,13 +228,13 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 
 ## 9. Frontend Anti-Patterns Summary
 
-| Anti-Pattern                                     | Why It Is Forbidden                                        | Correct Pattern                                   |
-| ------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
-| Importing `zod` in application/runtime code      | Violates the Valibot contract; dev-tool exception is only section 2.3 | Use `valibot` (`v.*`) exclusively             |
-| Reading router context `.auth` in client guards  | Context is server-only; causes stale auth state            | Read `useAuthStore.getState()` in `beforeLoad`    |
-| `useMutation` result object in hook dependencies | Breaks referential stability, causes infinite re-renders   | Depend only on `mut.mutate`                       |
-| Reading `ref.current` during render              | Violates React Compiler contract                           | Extract primitives or store in `useState`         |
-| Monolithic import of `jspdf` / `MapLibre`        | Blows past 500 KB bundle budget                            | Use dynamic `import()` or `React.lazy()`          |
-| Interactive controls < 44x44px                   | Violates the project's 44px minimum target size            | Set minimum dimension `min-w-[44px] min-h-[44px]` |
-| Unguarded Framer Motion animations               | Induces motion sickness for vestibular disorder users      | Gate animation props on `prefers-reduced-motion`  |
-| Blob URLs created during render                  | Memory leaks and unpredictable garbage collection          | Allocate in effects/handlers; revoke on unmount   |
+| Anti-Pattern                                     | Why It Is Forbidden                                                   | Correct Pattern                                   |
+| ------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------- |
+| Importing `zod` in application/runtime code      | Violates the Valibot contract; dev-tool exception is only section 2.3 | Use `valibot` (`v.*`) exclusively                 |
+| Reading router context `.auth` in client guards  | Context is server-only; causes stale auth state                       | Read `useAuthStore.getState()` in `beforeLoad`    |
+| `useMutation` result object in hook dependencies | Breaks referential stability, causes infinite re-renders              | Depend only on `mut.mutate`                       |
+| Reading `ref.current` during render              | Violates React Compiler contract                                      | Extract primitives or store in `useState`         |
+| Monolithic import of `jspdf` / `MapLibre`        | Blows past 500 KB bundle budget                                       | Use dynamic `import()` or `React.lazy()`          |
+| Interactive controls < 44x44px                   | Violates the project's 44px minimum target size                       | Set minimum dimension `min-w-[44px] min-h-[44px]` |
+| Unguarded Framer Motion animations               | Induces motion sickness for vestibular disorder users                 | Gate animation props on `prefers-reduced-motion`  |
+| Blob URLs created during render                  | Memory leaks and unpredictable garbage collection                     | Allocate in effects/handlers; revoke on unmount   |

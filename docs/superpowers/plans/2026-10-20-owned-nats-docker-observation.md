@@ -1,5 +1,7 @@
 # Bounded Docker observation prerequisites
 
+> **Status (2026-11-26): implemented.** `scripts/owned_nats_docker.py` is wired through the outage CLI, the coordinator and `scripts/owned_nats_broker_control.py`, behind the PR-gated workflow step. Notes below that call the wiring disabled are dated.
+
 ## Scope
 
 Runtime observation, coordinator/CLI wiring and outage remain disabled. Prepared requests and supplied bytes do not establish actual Docker execution, executable/config/socket provenance, trusted daemon identity, complete inventory, health, image trust or mount admission.

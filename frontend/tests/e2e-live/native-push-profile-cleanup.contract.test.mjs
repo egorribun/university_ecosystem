@@ -174,10 +174,19 @@ test("a native Push test budget holds the bounded FCM steps it declares", async 
   const suiteBudget = Number(
     configSource.match(/^ {2}timeout: ([0-9_]+),$/mu)?.[1].replaceAll("_", "")
   )
+  const nativeWait = Number(
+    fixtureSource
+      .match(/export const NATIVE_PUSH_NOTIFICATION_WAIT_MS = ([0-9_]+)/u)?.[1]
+      .replaceAll("_", "")
+  )
   assert.equal(stepBudget, 60_000)
+  assert.equal(nativeWait, 120_000)
   assert.equal(suiteBudget, 60_000)
-  // Two FCM-bound steps plus the ordinary suite budget for setup and cleanup.
-  assert.ok(testBudget >= 2 * stepBudget + suiteBudget, "the test budget must hold its steps")
+  // Both FCM-bound steps plus the ordinary suite budget for setup and cleanup.
+  assert.ok(
+    testBudget >= stepBudget + nativeWait + suiteBudget,
+    "the test budget must hold its steps"
+  )
 
   const fixtureStart = fixtureSource.indexOf("  nativePushProfiles: async (")
   const profileCreation = fixtureSource.indexOf("await createOwnedProfile(", fixtureStart)

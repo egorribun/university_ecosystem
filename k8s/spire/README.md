@@ -65,9 +65,8 @@ the kubelet secure port is authorized as `nodes/pods` `get` when
 it authorizes every other kubelet endpoint, including WebSocket exec. Every
 deployed kubelet must have `KubeletFineGrainedAuthz` enabled (default-on from
 Kubernetes v1.36 per the [kubelet authorization](https://kubernetes.io/docs/reference/access-authn-authz/kubelet-authn-authz/)
-docs). The AUD-373 kind job exercises SVID issuance under this grant. The
-AUD-251 finding stays Open in [docs/audits/INDEX.md](../../docs/audits/INDEX.md)
-until the owner closes it on live evidence.
+docs). The AUD-373 kind job exercises SVID issuance under this grant. AUD-251 is
+recorded as accepted in [docs/audits/INDEX.md](../../docs/audits/INDEX.md), bound to the cited hosted run.
 
 ## SPIFFE CSI driver socket path
 

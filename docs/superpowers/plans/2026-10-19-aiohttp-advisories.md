@@ -1,5 +1,7 @@
 # aiohttp advisory remediation plan
 
+> **Status (2026-11-26): completed.** `uv.lock` pins aiohttp 3.14.4. Kept because `docs/audits/AUDIT-2026-10.md` cites this plan.
+
 Date: 2026-10-19. GitHub plugin only, egorribun, existing PR1306.
 
 ## Evidence
