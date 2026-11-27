@@ -98,6 +98,57 @@ if (ENABLED) {
       }
     })
 
+    test("foundation targets — schedule week navigation", async ({ browser }) => {
+      for (const viewport of VIEWPORTS) {
+        await test.step(`${viewport.width}x${viewport.height}`, async () => {
+          const context = await browser.newContext({ baseURL: BASE_URL, viewport })
+          const page = await context.newPage()
+          try {
+            const mock = await useMockApi(page)
+            await mock.login(page)
+            await gotoWithTransientRetry(page, "/schedule")
+            await page
+              .locator("#main-content")
+              .getByRole("button", { name: /^(Настройки|Settings)$/i })
+              .click()
+
+            const dialog = page.getByRole("dialog")
+            const previous = dialog.getByRole("button", {
+              name: /Предыдущая неделя|Previous week/i,
+            })
+            const next = dialog.getByRole("button", { name: /Следующая неделя|Next week/i })
+            const reset = dialog.getByRole("button", {
+              name: /Перейти к текущей неделе|Go to current week/i,
+            })
+            const week = dialog.getByRole("button", { name: /^(Неделя \+1|Week \+1)$/i })
+            await next.click()
+            await expect(week).toBeVisible()
+
+            const bounds = await dialog.boundingBox()
+            if (!bounds) throw new Error("Schedule settings dialog has no bounds")
+            for (const [label, control] of [
+              ["previous week", previous],
+              ["next week", next],
+              ["current week", reset],
+              ["week label", week],
+            ] as const) {
+              await assertControlTarget(control, `${viewport.width}px schedule ${label}`)
+              const box = await control.boundingBox()
+              if (!box) throw new Error(`Schedule ${label} button has no bounds`)
+              expect(box.x).toBeGreaterThanOrEqual(bounds.x)
+              expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width)
+            }
+            await reset.click()
+            await expect(
+              dialog.getByRole("button", { name: /^(Эта неделя|This week)$/i })
+            ).toBeVisible()
+          } finally {
+            await context.close()
+          }
+        })
+      }
+    })
+
     test("foundation targets — schedule export menu", async ({ browser }) => {
       for (const viewport of VIEWPORTS) {
         await test.step(`${viewport.width}x${viewport.height}`, async () => {

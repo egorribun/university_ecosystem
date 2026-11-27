@@ -63,8 +63,14 @@ describe("ScheduleSettingsPanel closure paths", () => {
     )
 
     const positiveWeek = screen.getByRole("button", { name: "schedule:toolbar.weekOffset:+1" })
-    expect(positiveWeek).toHaveClass("sched-settings-btn")
-    expect(screen.getByRole("button", { name: "schedule:toolbar.goToToday" })).toBeInTheDocument()
+    expect(positiveWeek).toHaveClass("sched-settings-btn", "min-h-11")
+    for (const name of [
+      "schedule:toolbar.prevWeek",
+      "schedule:toolbar.nextWeek",
+      "schedule:toolbar.goToToday",
+    ]) {
+      expect(screen.getByRole("button", { name })).toHaveClass("min-h-11", "min-w-11")
+    }
     expect(screen.getByRole("checkbox", { name: "schedule:settings.compactMode" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "schedule:settings.showPast" })).not.toBeChecked()
     expect(screen.getByRole("button", { name: "Monday" })).toHaveAttribute("aria-pressed", "true")
