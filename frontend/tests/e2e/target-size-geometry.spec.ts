@@ -71,6 +71,49 @@ if (ENABLED) {
       }
     })
 
+    test("foundation targets — event image close", async ({ browser }) => {
+      for (const viewport of VIEWPORTS) {
+        await test.step(`${viewport.width}x${viewport.height}`, async () => {
+          const context = await browser.newContext({ baseURL: BASE_URL, viewport })
+          const page = await context.newPage()
+          try {
+            const mock = await useMockApi(page)
+            await mock.login(page)
+            await page.route("**/api/v1/events/uuid-10**", (route) =>
+              route.fulfill({
+                json: {
+                  id: "uuid-10",
+                  title: "Event with an image",
+                  description: "An event with an image to enlarge",
+                  location: "Main Hall",
+                  event_type: "lecture",
+                  starts_at: "2026-06-28T12:00:00Z",
+                  ends_at: "2026-06-28T14:00:00Z",
+                  created_at: "2026-06-27T10:00:00Z",
+                  created_by: "uuid-1",
+                  image_url: "/fallbacks/placeholder.png",
+                  is_active: true,
+                  participant_count: 0,
+                  is_registered: false,
+                  files: [],
+                },
+              })
+            )
+            await gotoWithTransientRetry(page, "/events/uuid-10")
+            await page.getByRole("button", { name: /Увеличить изображение|Zoom image/i }).click()
+
+            const dialog = page.getByRole("dialog", { name: /Увеличить изображение|Zoom image/i })
+            const close = dialog.getByRole("button", { name: /^(Закрыть|Close)$/i })
+            await assertControlTarget(close, `${viewport.width}px event image close`)
+            await close.click()
+            await expect(dialog).not.toBeVisible()
+          } finally {
+            await context.close()
+          }
+        })
+      }
+    })
+
     test("foundation targets — shared Select options", async ({ browser }) => {
       for (const viewport of VIEWPORTS) {
         await test.step(`${viewport.width}x${viewport.height}`, async () => {

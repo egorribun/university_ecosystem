@@ -7,6 +7,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { ZoomIn, X } from "lucide-react"
 import { useState, useEffect, useMemo, useRef, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
+import { createPortal } from "react-dom"
 import { cn } from "@/utils/cn"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
@@ -108,38 +109,40 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
         </button>
       </div>
 
-      {/* Lightbox modal */}
-      {lightboxOpen && (
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- lightbox backdrop, Escape handled via keydown listener
-        <div
-          ref={lightboxRef}
-          className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm"
-          onClick={() => setLightboxOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("events:detail.actions.zoom")}
-        >
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              setLightboxOpen(false)
-            }}
-            className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-[var(--text-inverse)] hover:bg-white/[calc(var(--opacity-soft)*100%)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
-            aria-label={t("common:buttons.close")}
+      {/* Keep the lightbox above the navbar, outside the event page's stacking context. */}
+      {lightboxOpen &&
+        createPortal(
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- lightbox backdrop, Escape handled via keydown listener
+          <div
+            ref={lightboxRef}
+            className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            onClick={() => setLightboxOpen(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("events:detail.actions.zoom")}
           >
-            <X size={20} />
-          </button>
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- lightbox image, keyboard handled by dialog */}
-          <img
-            src={imageUrl}
-            alt={t("events:alt.image")}
-            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setLightboxOpen(false)
+              }}
+              className="absolute top-4 right-4 z-10 flex size-11 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-[var(--text-inverse)] hover:bg-white/[calc(var(--opacity-soft)*100%)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+              aria-label={t("common:buttons.close")}
+            >
+              <X size={20} />
+            </button>
+            {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- lightbox image, keyboard handled by dialog */}
+            <img
+              src={imageUrl}
+              alt={t("events:alt.image")}
+              className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>,
+          document.body
+        )}
     </>
   )
 }
