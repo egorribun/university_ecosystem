@@ -103,7 +103,8 @@ export function MobileMenu({
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
   }
 
-  if (!isOpen) return null
+  // Keep the trigger's ID reference valid without mounting a closed dialog.
+  if (!isOpen) return <div id="mobile-drawer" hidden />
 
   return createPortal(
     <>
