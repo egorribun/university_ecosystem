@@ -71,6 +71,27 @@ describe("LiveRegionProvider / useAnnouncer", () => {
     expect(screen.getByRole("alert").textContent).toBe("")
   })
 
+  it.each([
+    { name: "polite only", channels: ["polite"] },
+    { name: "assertive only", channels: ["assertive"] },
+    { name: "both", channels: ["polite", "assertive"] },
+  ] as const)("cancels pending announcement timers on unmount ($name)", ({ channels }) => {
+    vi.useFakeTimers()
+    const { result, unmount } = renderHook(() => useAnnouncer(), { wrapper })
+    const initialTimers = vi.getTimerCount()
+
+    act(() => {
+      for (const channel of channels) result.current.announce("pending message", channel)
+    })
+    expect(vi.getTimerCount()).toBe(initialTimers + channels.length)
+
+    unmount()
+
+    expect(vi.getTimerCount()).toBe(initialTimers)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
   it("renders no live regions in server markup, only the children", () => {
     const html = renderToString(
       <LiveRegionProvider>
