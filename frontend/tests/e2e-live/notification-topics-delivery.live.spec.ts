@@ -9,6 +9,7 @@ import {
   stubBreachedPasswordLookup,
 } from "./fixtures"
 import {
+  NATIVE_PUSH_NOTIFICATION_WAIT_MS,
   PUSH_SUBSCRIBE_SAVE_TIMEOUT_MS,
   type NativePushProfileRegistry,
   livePushObservationBudgetMs,
@@ -561,7 +562,7 @@ const waitForNativeNotification = async (
   try {
     await expect
       .poll(async () => (await inspectNativeNotification(page, notificationId, entityKey)).count, {
-        timeout: 60_000,
+        timeout: NATIVE_PUSH_NOTIFICATION_WAIT_MS,
         message:
           "the native Chromium service worker receives a push tagged with the persisted notification id",
       })
