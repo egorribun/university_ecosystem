@@ -196,7 +196,7 @@ describe("ScheduleHeader user-visible behavior", () => {
     expect(remaining).toHaveAttribute("aria-live", "polite")
   })
 
-  it("presents the next lesson's metadata and countdown at a nonzero minute", async () => {
+  it("announces minute updates separately from the next lesson's second-level countdown", async () => {
     await renderHeader({
       nextLesson: lesson,
       todayLessons: [lesson],
@@ -207,10 +207,12 @@ describe("ScheduleHeader user-visible behavior", () => {
     expect(screen.getByText("Dr. Ivanova")).toBeVisible()
     expect(screen.getByText("ГУК-305")).toBeVisible()
     expect(screen.getByText("11:00–12:30")).toBeVisible()
-    expect(screen.getByLabelText("Next lesson starts in 15 minutes")).toHaveTextContent("15min")
+    const remaining = screen.getByLabelText("Next lesson starts in 15 minutes")
+    expect(remaining).toHaveTextContent("15min")
+    expect(remaining).toHaveAttribute("aria-live", "polite")
     expect(screen.getByRole("timer", { name: "15 minutes 0 seconds remaining" })).toHaveAttribute(
       "aria-live",
-      "polite"
+      "off"
     )
   })
 

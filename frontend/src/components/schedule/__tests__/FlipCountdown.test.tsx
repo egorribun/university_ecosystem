@@ -67,7 +67,7 @@ describe("FlipCountdown", () => {
     render(<FlipCountdown targetMinutes={600} />)
     const timer = screen.getByRole("timer")
     expect(timer).toBeInTheDocument()
-    expect(timer).toHaveAttribute("aria-live", "polite")
+    expect(timer).toHaveAttribute("aria-live", "off")
     // ariaLabel key receives interpolated mins/secs (5s left → 0 min 5 sec)
     expect(timer).toHaveAttribute("aria-label", "schedule:countdown.ariaLabel:0:5")
     // 4 flip digit groups (MM:SS) — each FlipDigit emits an aria-label "<value> <label>"
