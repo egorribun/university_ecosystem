@@ -41,6 +41,7 @@
     "my": "My events"
   },
   "filters": {
+    "title": "Event filters",
     "search": "Search events",
     "location": "Location",
     "dateRange": "Date",
