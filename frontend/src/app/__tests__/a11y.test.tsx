@@ -12,6 +12,7 @@ import { checkA11y } from "@/tests/axeTest"
 import { createQueryClient } from "@/app/queryClient"
 import api from "@/api/client"
 import * as sdk from "@/api/generated/sdk.gen"
+import * as weather from "@/api/weather"
 import type { User } from "@/types/User"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { AppShellProvider } from "@/contexts/AppShellContext"
@@ -241,10 +242,19 @@ describe("Accessibility checks", () => {
       })
     })
 
+    // Keep the weather badge in the axe scan without relying on a public forecast.
+    const weatherSpy = vi.spyOn(weather, "fetchWeatherSnapshot").mockResolvedValue({
+      conditionCode: 1,
+      conditionLabel: "Mainly clear",
+      temperatureC: 17,
+      observedAt: "2026-01-01T12:00:00.000Z",
+    })
+
     const { container, unmount } = await renderForA11y(Dashboard, "/dashboard")
 
     try {
       await waitFor(() => expect(api.get).toHaveBeenCalled())
+      expect(await screen.findByRole("status", { name: /Temperature \+17°C/i })).toBeVisible()
       // Wait for internal components to finish loading (e.g. ScheduleCard)
       await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), {
         timeout: 2000,
@@ -255,6 +265,7 @@ describe("Accessibility checks", () => {
       unmount()
       getSpy.mockRestore()
       typedGetSpy.mockRestore()
+      weatherSpy.mockRestore()
     }
   })
 
