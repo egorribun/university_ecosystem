@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useEffect } from "react"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
+import { createPortal } from "react-dom"
 import { X as CloseIcon, ZoomIn } from "lucide-react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
@@ -127,36 +128,39 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
         )}
       </figure>
 
-      {/* Lightbox — focus-trapped modal */}
-      {lightboxOpen && imageUrl && (
-        <div
-          ref={lightboxRef}
-          className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("news:actions.zoomImage")}
-          tabIndex={-1}
-        >
-          {/* Backdrop click to close */}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div className="absolute inset-0" onClick={() => setLightboxOpen(false)} />
-
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 right-4 z-surface inline-flex size-11 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-white transition hover:bg-white/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
-            aria-label={t("common:buttons.close")}
+      {/* Keep the lightbox outside the page stacking context. */}
+      {lightboxOpen &&
+        imageUrl &&
+        createPortal(
+          <div
+            ref={lightboxRef}
+            className="fixed inset-0 z-modal flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("news:actions.zoomImage")}
+            tabIndex={-1}
           >
-            <CloseIcon size={20} />
-          </button>
-          <img
-            src={imageUrl}
-            alt={displayTitle || t("news:alt.heroFallback")}
-            className="relative z-base max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
-            draggable={false}
-          />
-        </div>
-      )}
+            {/* Backdrop click to close */}
+            {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+            <div className="absolute inset-0" onClick={() => setLightboxOpen(false)} />
+
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(false)}
+              className="absolute top-4 right-4 z-surface inline-flex size-11 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-white transition hover:bg-white/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[calc(var(--opacity-medium)*100%)]"
+              aria-label={t("common:buttons.close")}
+            >
+              <CloseIcon size={20} />
+            </button>
+            <img
+              src={imageUrl}
+              alt={displayTitle || t("news:alt.heroFallback")}
+              className="relative z-base max-h-[90vh] max-w-[90vw] object-contain rounded-lg select-none"
+              draggable={false}
+            />
+          </div>,
+          document.body
+        )}
     </>
   )
 }
