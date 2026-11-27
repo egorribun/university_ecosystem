@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react"
+import { useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -46,6 +46,8 @@ export function ScheduleMiniCalendar({
     )
   })
   const gridRef = useRef<HTMLDivElement | null>(null)
+  const nextMonthButtonRef = useRef<HTMLButtonElement | null>(null)
+  const pendingTodayFocusRef = useRef(false)
   const pendingKeyboardFocusRef = useRef<{ target: Date; origin: Date } | null>(null)
 
   const year = displayMonth.getFullYear()
@@ -92,6 +94,12 @@ export function ScheduleMiniCalendar({
       ?.querySelector<HTMLButtonElement>(`[data-calendar-day="${focusDate.getDate()}"]`)
       ?.focus()
   }, [year, monthIdx, focusedDate])
+
+  useLayoutEffect(() => {
+    if (!isCurrentMonth || !pendingTodayFocusRef.current) return
+    pendingTodayFocusRef.current = false
+    gridRef.current?.querySelector<HTMLButtonElement>('[aria-current="date"]')?.focus()
+  }, [isCurrentMonth])
 
   // Locale-aware month label
   const monthLabel = displayMonth.toLocaleDateString(i18n.language, {
@@ -183,8 +191,14 @@ export function ScheduleMiniCalendar({
         {!isCurrentMonth && (
           <button
             type="button"
-            onClick={() => {
+            onClick={(event) => {
               const today = new Date()
+              if (document.activeElement === event.currentTarget) {
+                // Keep focus on a persistent control while the parent commits the month.
+                nextMonthButtonRef.current?.focus()
+                pendingTodayFocusRef.current = true
+                setFocusedDate(today)
+              }
               setInternalMonth(today)
               onMonthChange?.(today)
             }}
@@ -195,6 +209,10 @@ export function ScheduleMiniCalendar({
         )}
         <button
           type="button"
+          ref={nextMonthButtonRef}
+          onBlur={() => {
+            pendingTodayFocusRef.current = false
+          }}
           onClick={() => changeMonth(1)}
           aria-label={t("common:next")}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
