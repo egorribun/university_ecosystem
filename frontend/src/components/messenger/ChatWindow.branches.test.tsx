@@ -8,7 +8,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { Message } from "@/components/messenger/types"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
-const { motionState } = vi.hoisted(() => ({
+const { motionState, scrollToIndex } = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
   motionState: { reduced: false },
 }))
 
@@ -67,7 +68,7 @@ vi.mock("@tanstack/react-virtual", () => ({
       })),
     getTotalSize: () => count * 80,
     measureElement: () => {},
-    scrollToIndex: () => {},
+    scrollToIndex,
   }),
 }))
 
@@ -486,20 +487,30 @@ describe("ChatWindow — jump-to-bottom FAB (W208 SW4)", () => {
     expect(sourceScrollTargets).toEqual([])
   })
 
-  it("clicking the FAB does not throw (scrollToIndex mocked)", () => {
-    const { container } = render(
-      <ChatWindow messages={[makeMessage({ id: "j2", text: "msg" })]} />,
+  it.each([
+    { reduced: false, behavior: "smooth" },
+    { reduced: true, behavior: "instant" },
+  ])("jumps to the newest message with $behavior scrolling", ({ reduced, behavior }) => {
+    motionState.reduced = reduced
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "older", text: "Older message" }),
+          makeMessage({ id: "newest", text: "Newest message" }),
+        ]}
+      />,
       { wrapper }
     )
-    const log = container.querySelector('[role="log"]') as HTMLDivElement
+    const log = screen.getByRole("log")
     Object.defineProperty(log, "scrollHeight", { value: 1000, configurable: true })
     Object.defineProperty(log, "clientHeight", { value: 300, configurable: true })
     Object.defineProperty(log, "scrollTop", { value: 100, configurable: true })
-    act(() => {
-      fireEvent.scroll(log)
-    })
-    const fab = screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })
-    expect(() => fireEvent.click(fab)).not.toThrow()
+    fireEvent.scroll(log)
+
+    const jump = screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })
+    scrollToIndex.mockClear()
+    fireEvent.click(jump)
+    expect(scrollToIndex).toHaveBeenCalledExactlyOnceWith(1, { align: "end", behavior })
   })
 })
 
