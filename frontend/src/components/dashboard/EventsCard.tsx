@@ -167,7 +167,7 @@ const EventsCardContent = memo(function EventsCardContent({
               key={scope}
               type="button"
               className={cn(
-                "rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
+                "min-h-11 min-w-11 rounded-md px-4 py-1.5 text-sm font-semibold transition-all duration-base focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
                 eventsScope === scope
                   ? "bg-brand text-inverse-text shadow-sm"
                   : "text-text-secondary hover:text-text-primary"
