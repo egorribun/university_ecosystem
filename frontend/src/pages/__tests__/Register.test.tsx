@@ -396,24 +396,29 @@ describe("Register page", () => {
 
     const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
     const confirmInput = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
-    const revealButtons = screen.getAllByRole("button", {
-      name: tAuth("actions.showPassword"),
+    const revealPassword = screen.getByRole("button", { name: "Show password" })
+    const revealConfirmation = screen.getByRole("button", {
+      name: "Show password confirmation",
     })
 
-    for (const button of revealButtons) {
+    for (const button of [revealPassword, revealConfirmation]) {
       expect(button).toHaveClass("min-h-11", "min-w-11")
+      expect(button).not.toHaveAttribute("aria-pressed")
     }
 
-    await user.click(revealButtons[0]!)
-    expect(
-      screen.getByRole("button", { name: tAuth("actions.hideCredential") })
-    ).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: tAuth("actions.hideCredential") }))
-
-    for (const button of revealButtons) {
-      fireEvent.click(button)
-      fireEvent.click(button)
-    }
+    expect(passwordInput).toHaveAttribute("type", "password")
+    expect(confirmInput).toHaveAttribute("type", "password")
+    await user.click(revealPassword)
+    expect(passwordInput).toHaveAttribute("type", "text")
+    expect(confirmInput).toHaveAttribute("type", "password")
+    expect(revealPassword).toHaveAccessibleName("Hide password")
+    expect(revealPassword).not.toHaveAttribute("aria-pressed")
+    await user.click(revealConfirmation)
+    expect(confirmInput).toHaveAttribute("type", "text")
+    expect(revealConfirmation).toHaveAccessibleName("Hide password confirmation")
+    expect(revealConfirmation).not.toHaveAttribute("aria-pressed")
+    await user.click(revealPassword)
+    await user.click(revealConfirmation)
     expect(passwordInput).toHaveAttribute("type", "password")
     expect(confirmInput).toHaveAttribute("type", "password")
 
