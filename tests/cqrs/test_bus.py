@@ -21,7 +21,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
+import app.cqrs.bus as cqrs_bus
+from app.core.logging import get_logger
 from app.cqrs.base import Command, CommandHandler, Query, QueryHandler
 from app.cqrs.bus import CommandBus, LoggingMiddleware, QueryBus, _build_chain
 
@@ -289,12 +292,33 @@ class TestLoggingMiddleware:
         assert result == 7
 
     @pytest.mark.asyncio
-    async def test_re_raises_on_error(self) -> None:
-        async def handler(msg: Any) -> int:
-            raise ValueError("nope")
+    @pytest.mark.parametrize(
+        ("message", "kind"),
+        [(_PingCmd(), "Command"), (_PingQuery(), "Query")],
+    )
+    async def test_re_raises_without_logging_handler_details(
+        self, monkeypatch: pytest.MonkeyPatch, message: Query | Command, kind: str
+    ) -> None:
+        failure = ValueError("handler rejected a sample contact field")
 
-        with pytest.raises(ValueError, match="nope"):
-            await LoggingMiddleware()(_PingCmd(), handler)
+        async def handler(msg: Query | Command) -> int:
+            assert msg is message
+            raise failure
+
+        with capture_logs() as logs:
+            monkeypatch.setattr(cqrs_bus, "logger", get_logger(cqrs_bus.__name__))
+            with pytest.raises(ValueError) as caught:
+                await LoggingMiddleware()(message, handler)
+
+        assert caught.value is failure
+        assert [entry for entry in logs if entry["log_level"] == "error"] == [
+            {
+                "event": "Error executing %s %s",
+                "positional_args": (kind, type(message).__name__),
+                "error_type": "ValueError",
+                "log_level": "error",
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_works_for_query_message(self) -> None:

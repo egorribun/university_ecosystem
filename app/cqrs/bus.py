@@ -61,7 +61,9 @@ class LoggingMiddleware:
             logger.debug("Finished %s: %s", msg_type, name)
             return result
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
-            logger.error("Error executing %s %s: %s", msg_type, name, e, exc_info=True)
+            logger.error(
+                "Error executing %s %s", msg_type, name, error_type=type(e).__name__
+            )
             raise
 
 
