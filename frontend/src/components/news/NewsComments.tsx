@@ -43,7 +43,10 @@ export function NewsComments({
   t,
   getMoscowDate,
 }: NewsCommentsProps) {
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingComment, setEditingComment] = useState<{
+    id: string
+    trigger: HTMLButtonElement
+  } | null>(null)
   // Use the platform empty-string initializer so this state cannot drift from
   // the empty editor contract before the first comment is selected.
   const [editingCommentText, setEditingCommentText] = useState<string>(String)
@@ -87,14 +90,14 @@ export function NewsComments({
         void result.then(
           () => {
             setEditPending(false)
-            setEditingCommentId(null)
+            setEditingComment(null)
           },
           () => {
             setEditPending(false)
             setInteractionError(true)
           }
         )
-      } else setEditingCommentId(null)
+      } else setEditingComment(null)
     } catch {
       setInteractionError(true)
     }
@@ -175,8 +178,8 @@ export function NewsComments({
                           disabled={
                             editPending || comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)
                           }
-                          onClick={() => {
-                            setEditingCommentId(comment.id)
+                          onClick={(event) => {
+                            setEditingComment({ id: comment.id, trigger: event.currentTarget })
                             setEditingCommentText(comment.content)
                           }}
                           className="inline-flex size-11 items-center justify-center rounded-lg hover:bg-(--bg-surface)/[calc(var(--opacity-strong)*100%)] text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
@@ -203,7 +206,7 @@ export function NewsComments({
                 </div>
 
                 {/* Comment body — inline edit or display */}
-                {editingCommentId === comment.id ? (
+                {editingComment?.id === comment.id ? (
                   <div className="flex flex-col gap-3 mt-1">
                     <Textarea
                       value={editingCommentText}
@@ -235,7 +238,10 @@ export function NewsComments({
                       <Button
                         variant="glass"
                         size="sm"
-                        onClick={() => setEditingCommentId(null)}
+                        onClick={() => {
+                          setEditingComment(null)
+                          editingComment.trigger.focus()
+                        }}
                         disabled={editPending}
                       >
                         {t("common:buttons.cancel")}

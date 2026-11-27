@@ -141,6 +141,27 @@ describe("NewsComments", () => {
     expect(screen.queryByLabelText("news:form.editCommentAriaLabel")).not.toBeInTheDocument()
   })
 
+  it("returns keyboard focus to the same comment's Edit button on cancel", async () => {
+    const user = userEvent.setup()
+    const updateComment = vi.fn()
+    render(<NewsComments {...baseProps} updateComment={updateComment} />)
+
+    const editButton = screen.getAllByRole("button", { name: "news:actions.editComment" })[1]!
+    editButton.focus()
+    await user.keyboard("{Enter}")
+    const editor = screen.getByRole("textbox", { name: "news:form.editCommentAriaLabel" })
+    expect(editor).toHaveFocus()
+    expect(editor).toHaveValue("Any word on enrollment caps?")
+    await user.tab()
+    expect(screen.getByRole("button", { name: "common:buttons.cancel" })).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(editor).not.toBeInTheDocument()
+    expect(screen.getByText("Any word on enrollment caps?")).toBeVisible()
+    expect(updateComment).not.toHaveBeenCalled()
+    expect(editButton).toHaveFocus()
+  })
+
   it("hides owner actions for a different non-admin user", () => {
     render(<NewsComments {...baseProps} user={{ id: "other", role: "student" }} />)
     expect(screen.queryByLabelText("news:actions.editComment")).not.toBeInTheDocument()
