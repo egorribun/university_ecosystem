@@ -71,6 +71,27 @@ if (ENABLED) {
       }
     })
 
+    test("foundation targets — settings tabs", async ({ browser }) => {
+      for (const viewport of VIEWPORTS) {
+        await test.step(`${viewport.width}x${viewport.height}`, async () => {
+          const context = await browser.newContext({ baseURL: BASE_URL, viewport })
+          const page = await context.newPage()
+          try {
+            const mock = await useMockApi(page)
+            await mock.login(page)
+            await gotoWithTransientRetry(page, "/settings")
+            const tabs = page.getByRole("tablist").getByRole("tab")
+            await expect(tabs).toHaveCount(6)
+            for (const [index, tab] of (await tabs.all()).entries()) {
+              await assertControlTarget(tab, `${viewport.width}px settings tab ${index + 1}`)
+            }
+          } finally {
+            await context.close()
+          }
+        })
+      }
+    })
+
     test("foundation targets — shared Select options", async ({ browser }) => {
       for (const viewport of VIEWPORTS) {
         await test.step(`${viewport.width}x${viewport.height}`, async () => {

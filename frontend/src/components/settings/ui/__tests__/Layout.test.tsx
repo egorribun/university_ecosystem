@@ -136,6 +136,7 @@ describe("settings layout primitives", () => {
 
     const tablist = screen.getByRole("tablist", { name: "Settings sections" })
     const tabs = screen.getAllByRole("tab")
+    for (const tab of tabs) expect(tab).toHaveClass("min-h-11", "min-w-11")
     expect(tabs[0]).toHaveAttribute("aria-selected", "true")
     expect(tabs[0]).toHaveAttribute("aria-controls", "settings")
     expect(tabs[0]).toHaveAttribute("tabindex", "0")
