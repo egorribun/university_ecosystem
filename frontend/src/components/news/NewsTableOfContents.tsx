@@ -57,6 +57,9 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
     const el = document.getElementById(id)
     if (!el) return
 
+    // Move focus with the reading position without adding a tab stop.
+    if (!el.hasAttribute("tabindex")) el.tabIndex = -1
+    el.focus({ preventScroll: true })
     el.scrollIntoView({ behavior: prefersReducedMotion ? "instant" : "smooth", block: "start" })
     setActiveId(id)
     // Collapsing after navigation is harmless on desktop (where the desktop
