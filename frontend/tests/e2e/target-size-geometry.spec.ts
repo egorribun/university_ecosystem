@@ -1,7 +1,7 @@
 import { expect, test } from "./test"
 
 import { gotoWithTransientRetry } from "./utils/navigation"
-import { useMockApi } from "./utils/mockApi"
+import { MOCK_NEWS_ID, useMockApi } from "./utils/mockApi"
 import { assertControlTarget } from "./utils/targetSize"
 
 const ENABLED = process.env.TARGET_SIZE_E2E === "true"
@@ -126,6 +126,34 @@ if (ENABLED) {
                 `${viewport.width}px schedule export option ${index + 1}`
               )
             }
+          } finally {
+            await context.close()
+          }
+        })
+      }
+    })
+
+    test("foundation targets — news admin actions", async ({ browser }) => {
+      for (const viewport of VIEWPORTS) {
+        await test.step(`${viewport.width}x${viewport.height}`, async () => {
+          const context = await browser.newContext({ baseURL: BASE_URL, viewport })
+          const page = await context.newPage()
+          try {
+            const mock = await useMockApi(page)
+            mock.state.profile.role = "admin"
+            await mock.login(page)
+            await gotoWithTransientRetry(page, `/news/${MOCK_NEWS_ID}`)
+            const header = page
+              .locator("#main-content header")
+              .filter({ has: page.getByRole("heading", { level: 1 }) })
+            await assertControlTarget(
+              header.getByRole("button", { name: /Редактировать новость|Edit news/i }),
+              `${viewport.width}px edit news action`
+            )
+            await assertControlTarget(
+              header.getByRole("button", { name: /Удалить новость|Delete news/i }),
+              `${viewport.width}px delete news action`
+            )
           } finally {
             await context.close()
           }

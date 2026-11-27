@@ -13,7 +13,7 @@ import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 
 const iconBtnClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-xl matte-chip text-(--text-secondary) transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl matte-chip text-(--text-secondary) transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
 
 interface NewsDetailHeaderProps {
   displayTitle: string

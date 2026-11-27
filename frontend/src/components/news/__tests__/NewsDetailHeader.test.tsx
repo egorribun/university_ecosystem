@@ -88,8 +88,12 @@ describe("NewsDetailHeader", () => {
         onDeleteOpen={onDeleteOpen}
       />
     )
-    await user.click(screen.getByLabelText("news:aria.editNews"))
-    await user.click(screen.getByLabelText("news:aria.deleteNews"))
+    const edit = screen.getByLabelText("news:aria.editNews")
+    const remove = screen.getByLabelText("news:aria.deleteNews")
+    expect(edit).toHaveClass("min-h-11", "min-w-11")
+    expect(remove).toHaveClass("min-h-11", "min-w-11")
+    await user.click(edit)
+    await user.click(remove)
     expect(onEditOpen).toHaveBeenCalledOnce()
     expect(onDeleteOpen).toHaveBeenCalledOnce()
   })
@@ -235,7 +239,7 @@ describe("NewsDetailHeader", () => {
 
     expect(editButton).toBeDisabled()
     expect(deleteButton).toBeDisabled()
-    expect(editButton).toHaveClass("inline-flex", "h-10", "w-10", "matte-chip")
+    expect(editButton).toHaveClass("inline-flex", "min-h-11", "min-w-11", "matte-chip")
     expect(deleteButton).toHaveClass("text-(--error-text)", "hover:text-(--error-text)")
 
     rerender(<NewsDetailHeader {...baseProps} isAdmin deleting />)
