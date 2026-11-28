@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
@@ -60,6 +60,49 @@ describe("ExportDropdown", () => {
     await user.click(screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" }))
     expect(openSpy).toHaveBeenCalledWith(calendarUrl, "_blank", "noopener")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("focuses the first available format on keyboard opening", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown googleCalendarUrl={calendarUrl} />)
+    const trigger = screen.getByRole("button", { name: /schedule:toolbar.export/ })
+    const calendar = () => screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
+
+    await user.tab()
+    expect(trigger).toHaveFocus()
+    await user.keyboard("{Enter}")
+    expect(calendar()).toHaveFocus()
+  })
+
+  it("restores focus to the export trigger when Escape closes the menu", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown googleCalendarUrl={calendarUrl} />)
+    const trigger = screen.getByRole("button", { name: /schedule:toolbar.export/ })
+    await user.click(trigger)
+    const calendar = screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
+    calendar.focus()
+    expect(calendar).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it("does not intercept arrow keys after focus moves outside the export dropdown", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <ExportDropdown googleCalendarUrl={calendarUrl} />
+        <textarea aria-label="Notes" />
+      </>
+    )
+    await user.click(screen.getByRole("button", { name: /schedule:toolbar.export/ }))
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+
+    const notes = screen.getByRole("textbox", { name: "Notes" })
+    notes.focus()
+    expect(fireEvent.keyDown(notes, { key: "ArrowDown" })).toBe(true)
+    expect(notes).toHaveFocus()
   })
 
   it("disables PDF/PNG export when there is no grid ref", async () => {
