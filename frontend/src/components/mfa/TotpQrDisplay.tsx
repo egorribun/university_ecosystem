@@ -18,6 +18,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   const { t } = useTranslation("auth")
   const { announce } = useAnnouncer()
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
   const mountedRef = useRef(false)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -46,6 +47,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       if (!mountedRef.current) return
       if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current)
       setCopied(true)
+      setCopyFailed(false)
       announce(t("mfa.totp.copied"))
       feedbackTimerRef.current = setTimeout(() => {
         feedbackTimerRef.current = null
@@ -57,6 +59,8 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current)
       feedbackTimerRef.current = null
       setCopied(false)
+      setCopyFailed(true)
+      announce(t("mfa.totp.copyFailed"))
     }
   }, [announce, normalizedSecret, t])
 
@@ -123,6 +127,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           )}
         </div>
       </div>
+      {copyFailed && <p className="text-sm text-error-text">{t("mfa.totp.copyFailed")}</p>}
       <p className="text-sm text-(--text-secondary)">{t("mfa.totp.instructions")}</p>
     </div>
   )
