@@ -364,7 +364,7 @@ export function Tab({
       tabIndex={selected ? 0 : -1}
       onClick={onClick}
       className={cn(
-        "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-slow",
+        "relative flex min-h-11 min-w-11 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-slow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
         selected
           ? "text-text-primary"
