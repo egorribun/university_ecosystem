@@ -17,6 +17,7 @@ package hub
 // before+after within one test and are NOT marked t.Parallel().
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -32,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -280,21 +282,27 @@ func TestHandleJoin_EmptyRoomNoOp(t *testing.T) {
 	h.mu.RUnlock()
 }
 
-func TestHandleJoin_DeniedIncrementsAuthFailures(t *testing.T) {
-	logger := setupTestHub().Logger
+func TestHandleJoin_DeniedPreservesMetricsWithoutLoggingIdentifiers(t *testing.T) {
+	var logs bytes.Buffer
+	logger := logging.NewJSONLogger(&logs, nil)
 	cfg := &config.Config{MaxClients: 10, BroadcastBufferSize: 10, BroadcastWorkers: 1}
 	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: false}, cfg, nil))
 	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "c-deny", "u-deny")
+	const userID = "account-for-denial-test"
+	const room = "room-for-denial-test"
+	c := newClientOn(h, srv, "c-deny", userID)
 
 	before := testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied"))
-	c.handleJoin(c.ctx, Message{Type: "join", Room: "secret"})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: room})
 	assert.Equal(t, before+1,
 		testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied")))
 	h.mu.RLock()
-	_, ok := h.Rooms["secret"]
+	_, ok := h.Rooms[room]
 	h.mu.RUnlock()
 	assert.False(t, ok, "denied join must not create the room")
+	assert.Contains(t, logs.String(), "Unauthorized room join rejected")
+	assert.NotContains(t, logs.String(), userID)
+	assert.NotContains(t, logs.String(), room)
 }
 
 // ---------------------------------------------------------------------------
