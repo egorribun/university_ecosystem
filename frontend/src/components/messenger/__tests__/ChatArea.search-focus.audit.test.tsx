@@ -2,6 +2,7 @@ type _MockedModuleType1 = typeof import("@tanstack/react-router")
 import { StrictMode, useState } from "react"
 import type { ComponentProps, ReactNode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { LazyMotion, domAnimation } from "framer-motion"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatArea } from "@/components/messenger/ChatArea"
@@ -44,11 +45,38 @@ vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt }: { alt?: string }) => <img alt={alt} />,
 }))
 
-vi.mock("@/components/messenger", () => ({
-  ChatWindow: () => null,
-  MessageInput: () => null,
-  TypingIndicator: () => null,
+// jsdom has no layout. Model the visible rows while leaving filtering and
+// empty-state rendering in the real ChatWindow.
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({
+    count,
+    getItemKey,
+  }: {
+    count: number
+    getItemKey: (index: number) => string
+  }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({
+        key: getItemKey(index),
+        index,
+        start: index * 80,
+      })),
+    getTotalSize: () => count * 80,
+    measureElement: () => {},
+    scrollToIndex: () => {},
+  }),
 }))
+
+vi.mock("@/components/messenger", async () => {
+  const { ChatWindow } = await vi.importActual<typeof import("@/components/messenger/ChatWindow")>(
+    "@/components/messenger/ChatWindow"
+  )
+  return {
+    ChatWindow,
+    MessageInput: () => null,
+    TypingIndicator: () => null,
+  }
+})
 
 const chat: Chat = {
   id: "chat-1",
@@ -80,9 +108,11 @@ const baseProps: ComponentProps<typeof ChatArea> = {
 function Harness({
   selected = true,
   initiallySearching = false,
+  messages = [],
 }: {
   selected?: boolean
   initiallySearching?: boolean
+  messages?: ComponentProps<typeof ChatArea>["messages"]
 }) {
   const [showSearchInChat, setShowSearchInChat] = useState(initiallySearching)
   const [searchQuery, setSearchQuery] = useState("")
@@ -94,6 +124,7 @@ function Harness({
         {...baseProps}
         selectedChatId={selected ? chat.id : null}
         activeChat={selected ? chat : null}
+        messages={messages}
         showSearchInChat={showSearchInChat}
         setShowSearchInChat={setShowSearchInChat}
         searchQuery={searchQuery}
@@ -167,6 +198,47 @@ describe("ChatArea search focus across real presence transitions", () => {
       await waitFor(() => expect(reopenedInput).toHaveFocus())
     }
   )
+
+  it("returns focus to the message search input after keyboard Clear", async () => {
+    state.reduced = true
+    const user = userEvent.setup()
+    render(
+      <Harness
+        messages={[
+          {
+            id: "msg-1",
+            senderId: "user-1",
+            text: "Study notes",
+            timestamp: "12:00",
+            isMe: false,
+          },
+        ]}
+      />,
+      { wrapper }
+    )
+    const toggle = await settledSearchToggle()
+    await user.click(toggle)
+    const input = await screen.findByRole("textbox", { name: searchName })
+    await waitFor(() => expect(input).toHaveFocus())
+
+    expect(screen.getByText("Study notes")).toBeInTheDocument()
+    await user.keyboard("missing")
+    const clear = await screen.findByRole("button", {
+      name: "messenger:noMessages.searchEmpty.clearSearch",
+    })
+    expect(screen.queryByText("Study notes")).not.toBeInTheDocument()
+    await user.tab()
+    expect(clear).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(input).toHaveValue("")
+    await waitFor(() => expect(clear).not.toBeInTheDocument())
+    expect(screen.getByText("Study notes")).toBeInTheDocument()
+    expect(input).toHaveFocus()
+    await user.keyboard("notes")
+    expect(input).toHaveValue("notes")
+    expect(screen.getByText("Study notes")).toBeInTheDocument()
+  })
 
   it("focuses an input that mounts after a chat becomes available", async () => {
     const { rerender } = render(<Harness selected={false} initiallySearching />, {
