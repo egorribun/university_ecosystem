@@ -681,7 +681,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 	proxy.Transport = proxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.ErrorContext(ctx, "Proxy error", "err", err, "path", r.URL.Path)
+		logger.ErrorContext(r.Context(), "Proxy error", "error_type", fmt.Sprintf("%T", err))
 		w.WriteHeader(http.StatusBadGateway)
 	}
 	wsHubURL, err := url.Parse(cfg.WsHubURL)
@@ -783,7 +783,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	wsProxy := httputil.NewSingleHostReverseProxy(wsHubURL)
 	wsProxy.Transport = proxyTransport
 	wsProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		logger.ErrorContext(ctx, "WS Hub Proxy error", "err", err, "path", r.URL.Path)
+		logger.ErrorContext(r.Context(), "WS Hub Proxy error", "error_type", fmt.Sprintf("%T", err))
 		w.WriteHeader(http.StatusBadGateway)
 	}
 	wsProxyFn := handlers.ProxyHandler(wsProxy, internalSecret)
