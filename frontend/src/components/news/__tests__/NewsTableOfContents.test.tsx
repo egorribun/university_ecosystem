@@ -173,20 +173,28 @@ describe("NewsTableOfContents", () => {
       "leading-snug",
       "transition-colors"
     )
-    await user.click(screen.getByRole("button", { name: "Background" }))
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Background" })).toHaveFocus()
+    await user.keyboard("{Enter}")
+
     expect(screen.queryByRole("button", { name: "Background" })).not.toBeInTheDocument()
+    expect(target).toHaveFocus()
+    expect(target).toHaveAttribute("tabindex", "-1")
     document.body.removeChild(target)
   })
 
-  it("scrolls to a heading when a link is clicked", async () => {
+  it("focuses and scrolls to a heading without changing its existing tabindex", async () => {
     const target = document.createElement("h2")
     target.id = "background"
+    target.tabIndex = 0
     target.scrollIntoView = vi.fn()
     document.body.appendChild(target)
     const user = userEvent.setup()
     render(<NewsTableOfContents headings={HEADINGS} />)
     await user.click(screen.getByRole("button", { name: "Background" }))
     expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" })
+    expect(target).toHaveFocus()
+    expect(target).toHaveAttribute("tabindex", "0")
     document.body.removeChild(target)
   })
 
