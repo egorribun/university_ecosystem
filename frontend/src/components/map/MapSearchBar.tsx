@@ -243,6 +243,12 @@ export function MapSearchBar({
   // ref is populated even though it is nullable during render.
   useImperativeHandle(searchInputRef, () => inputRef.current!)
 
+  const isExpanded = isOpen && options.length > 0
+  const activeOptionId =
+    isExpanded && activeIdx !== null && activeIdx < options.length
+      ? `${baseId}-opt-${activeIdx}`
+      : undefined
+
   return (
     <div className="relative">
       <div className="map-card-matte flex items-center gap-2 px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-teal-500)]/40 transition-shadow">
@@ -251,9 +257,9 @@ export function MapSearchBar({
           ref={setInputRef}
           type="text"
           role="combobox"
-          aria-expanded={isOpen && results.length > 0}
-          aria-controls={listboxId}
-          aria-activedescendant={activeIdx !== null ? `${baseId}-opt-${activeIdx}` : undefined}
+          aria-expanded={isExpanded}
+          aria-controls={isExpanded ? listboxId : undefined}
+          aria-activedescendant={activeOptionId}
           aria-label={t("search.ariaLabel")}
           placeholder={t("search.placeholder")}
           value={query}
@@ -301,7 +307,7 @@ export function MapSearchBar({
       </div>
 
       {/* Dropdown */}
-      {isOpen && results.length > 0 && (
+      {isExpanded && (
         <div
           id={listboxId}
           role="listbox"
