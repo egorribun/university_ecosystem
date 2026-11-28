@@ -67,6 +67,57 @@ describe("useEventsKeyboardNav", () => {
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" })
   })
 
+  it("uses instant scrolling with reduced motion and follows preference changes", () => {
+    const query = "(prefers-reduced-motion: reduce)"
+    const preference = Object.assign(new EventTarget(), {
+      media: query,
+      matches: true,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    })
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation((value) => {
+      expect(value).toBe(query)
+      return preference
+    })
+
+    try {
+      const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
+      const first = document.createElement("div")
+      const second = document.createElement("div")
+      const firstScroll = vi.fn()
+      const secondScroll = vi.fn()
+      first.scrollIntoView = firstScroll
+      second.scrollIntoView = secondScroll
+      act(() => {
+        result.current.registerRef(0, first)
+        result.current.registerRef(1, second)
+      })
+
+      dispatchKey("j")
+      expect(result.current.activeIndex).toBe(0)
+      expect(firstScroll).toHaveBeenLastCalledWith({ behavior: "instant", block: "center" })
+      dispatchKey("j")
+      expect(result.current.activeIndex).toBe(1)
+      expect(secondScroll).toHaveBeenLastCalledWith({ behavior: "instant", block: "center" })
+      dispatchKey("k")
+      expect(result.current.activeIndex).toBe(0)
+      expect(firstScroll).toHaveBeenCalledTimes(2)
+      expect(firstScroll).toHaveBeenLastCalledWith({ behavior: "instant", block: "center" })
+
+      act(() => {
+        preference.matches = false
+        preference.dispatchEvent(Object.assign(new Event("change"), { matches: false }))
+      })
+      dispatchKey("j")
+      expect(result.current.activeIndex).toBe(1)
+      expect(secondScroll).toHaveBeenCalledTimes(2)
+      expect(secondScroll).toHaveBeenLastCalledWith({ behavior: "smooth", block: "center" })
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("registerRef(null) removes the element; scrollToCard then no-ops (lines 23-30)", () => {
     const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
 
