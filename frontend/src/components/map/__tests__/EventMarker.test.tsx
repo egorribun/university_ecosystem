@@ -181,7 +181,11 @@ describe("EventMarker", () => {
     render(<EventMarker {...baseProps} isPopupOpen />)
     expect(screen.getByText("Hackathon 2026")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /events\.viewDetails/ })).toBeInTheDocument()
-    expect(screen.getByText("events.participants")).toBeInTheDocument()
+    for (const text of [EVENT.location, "events.participants"]) {
+      const metadata = screen.getByText(text)
+      expect(metadata).toHaveClass("text-text-secondary")
+      expect(metadata).not.toHaveClass("opacity-50")
+    }
     expect(
       mocks.translationCalls.find(({ key }) => key === "events.participants")?.options
     ).toEqual({ count: EVENT.participantCount })

@@ -162,11 +162,11 @@ export function EventMarker({
             <p className="text-xs opacity-70 mb-1">{formattedDate}</p>
 
             {/* Location */}
-            <p className="text-[10px] opacity-50 mb-1">{event.location}</p>
+            <p className="text-[10px] text-text-secondary mb-1">{event.location}</p>
 
             {/* Participant count */}
             {typeof event.participantCount === "number" && event.participantCount > 0 && (
-              <p className="text-[10px] opacity-50 mb-2">
+              <p className="text-[10px] text-text-secondary mb-2">
                 {t("events.participants", {
                   count: event.participantCount,
                 })}

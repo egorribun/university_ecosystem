@@ -171,7 +171,7 @@ export function POIMarker({
               </div>
               <div>
                 <p className="font-bold text-sm leading-tight">{displayName}</p>
-                <p className="text-[10px] opacity-50">{t(`poi.categories.${poi.type}`)}</p>
+                <p className="text-[10px] text-text-secondary">{t(`poi.categories.${poi.type}`)}</p>
               </div>
             </div>
             <a
