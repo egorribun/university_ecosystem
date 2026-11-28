@@ -1,3 +1,4 @@
+import { createRef } from "react"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
@@ -53,6 +54,14 @@ const teacher = { role: "teacher" } as unknown as User
 const student = { role: "student" } as unknown as User
 
 describe("ProfileEditor", () => {
+  it("exposes the name input as the editor focus target", () => {
+    const nameInput = createRef<HTMLInputElement>()
+    render(<ProfileEditor {...makeProps()} fullNameInputRef={nameInput} />)
+
+    nameInput.current?.focus()
+    expect(screen.getByRole("textbox", { name: "profile:form.name" })).toHaveFocus()
+  })
+
   it("renders base fields and action buttons with no user role", () => {
     render(<ProfileEditor {...makeProps()} />)
     expect(screen.getByText("profile:form.name")).toBeInTheDocument()
