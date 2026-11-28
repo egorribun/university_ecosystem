@@ -10,8 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import nats
 import pytest
+from structlog.testing import capture_logs
 
 import app.core.nats_broker as nats_broker_module
+from app.core.logging import get_logger
 from app.core.nats_broker import NatsTaskBroker, Task, _NatsTaskPayload, set_app
 
 
@@ -417,7 +419,13 @@ async def test_run_worker_propagates_cancellation_during_initial_connect() -> No
     sleep.assert_not_awaited()
 
 
-async def test_run_worker_retries_initial_nats_outage() -> None:
+@pytest.mark.parametrize(
+    "outage",
+    [nats.errors.NoServersError(), OSError("backend endpoint 192.0.2.24 unavailable")],
+)
+async def test_run_worker_retries_initial_nats_outage(
+    monkeypatch: pytest.MonkeyPatch, outage: OSError | nats.errors.NoServersError
+) -> None:
     broker = NatsTaskBroker()
     mock_js = AsyncMock()
     mock_sub = AsyncMock()
@@ -429,16 +437,28 @@ async def test_run_worker_retries_initial_nats_outage() -> None:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise nats.errors.NoServersError()
+            raise outage
         broker._js = mock_js
 
     with (
+        capture_logs() as logs,
         patch.object(broker, "connect", side_effect=connect),
         patch("app.core.nats_broker.asyncio.sleep", new=AsyncMock()),
         pytest.raises(asyncio.CancelledError),
     ):
+        monkeypatch.setattr(
+            nats_broker_module, "_logger", get_logger(nats_broker_module.__name__)
+        )
         await broker.run_worker()
 
+    assert [entry for entry in logs if entry["log_level"] == "warning"] == [
+        {
+            "event": "NATS task worker connection failed; retrying",
+            "error_type": type(outage).__name__,
+            "retry_delay_seconds": nats_broker_module._WORKER_RETRY_DELAY_S,
+            "log_level": "warning",
+        }
+    ]
     assert attempts == 2
     mock_js.pull_subscribe.assert_awaited_once_with(
         subject="tasks.>", durable="python-worker"
@@ -577,24 +597,40 @@ async def test_run_worker_continues_after_fetch_timeout() -> None:
     assert mock_sub.fetch.await_count == 2
 
 
-async def test_run_worker_sleeps_after_unexpected_fetch_error() -> None:
+async def test_run_worker_sleeps_after_unexpected_fetch_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     broker = NatsTaskBroker()
     mock_js = AsyncMock()
     mock_sub = AsyncMock()
     mock_js.pull_subscribe.return_value = mock_sub
     mock_sub.fetch.side_effect = [
-        RuntimeError("fetch failed"),
+        RuntimeError("backend endpoint 192.0.2.25 unavailable"),
         asyncio.CancelledError(),
     ]
     broker._js = mock_js
 
-    with patch.object(
-        nats_broker_module.asyncio, "sleep", new_callable=AsyncMock
-    ) as sleep:
+    with (
+        capture_logs() as logs,
+        patch.object(
+            nats_broker_module.asyncio, "sleep", new_callable=AsyncMock
+        ) as sleep,
+    ):
+        monkeypatch.setattr(
+            nats_broker_module, "_logger", get_logger(nats_broker_module.__name__)
+        )
         with pytest.raises(asyncio.CancelledError):
             await broker.run_worker()
 
     sleep.assert_awaited_once_with(1)
+    assert [entry for entry in logs if entry["log_level"] == "error"] == [
+        {
+            "event": "Broker worker error",
+            "error_type": "RuntimeError",
+            "retry_delay_seconds": 1,
+            "log_level": "error",
+        }
+    ]
 
 
 def test_jetstream_property_returns_current_context() -> None:

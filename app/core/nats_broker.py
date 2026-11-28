@@ -727,7 +727,11 @@ class NatsTaskBroker:
                 TimeoutError,
                 nats.errors.NoServersError,
             ) as exc:
-                _logger.warning("NATS task worker connection failed; retrying: %s", exc)
+                _logger.warning(
+                    "NATS task worker connection failed; retrying",
+                    error_type=type(exc).__name__,
+                    retry_delay_seconds=_WORKER_RETRY_DELAY_S,
+                )
                 await asyncio.sleep(_WORKER_RETRY_DELAY_S)
 
         # PERF-4 (audit 2026-03): Batch-fetch instead of fetch(1).
@@ -874,7 +878,11 @@ class NatsTaskBroker:
             except nats.errors.TimeoutError:
                 continue
             except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — worker loop must survive any error (reviewed TD-27-04)
-                _logger.error("Broker worker error: %s", exc)
+                _logger.error(
+                    "Broker worker error",
+                    error_type=type(exc).__name__,
+                    retry_delay_seconds=1,
+                )
                 await asyncio.sleep(1)
 
 
