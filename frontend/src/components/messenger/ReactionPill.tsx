@@ -136,7 +136,11 @@ export function ReactionPill({
     onPointerDown: handlePointerDown,
     onPointerUp: clearLongPress,
     onPointerLeave: clearLongPress,
-    onPointerCancel: clearLongPress,
+    onPointerCancel: () => {
+      clearLongPress()
+      // A canceled pointer will not produce the click this flag would suppress.
+      longPressFiredRef.current = false
+    },
     onPointerMove: clearLongPress,
   })
   const floatingProps = getFloatingProps()

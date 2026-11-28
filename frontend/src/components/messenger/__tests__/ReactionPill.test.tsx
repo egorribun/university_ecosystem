@@ -315,6 +315,19 @@ describe("ReactionPill long-press gesture and reactor list", () => {
     expect(onToggle).toHaveBeenCalledExactlyOnceWith("👍")
   })
 
+  it("accepts keyboard activation after a long-press is canceled", () => {
+    const { onToggle } = renderSeeded([])
+    const btn = screen.getByRole("button")
+    pressFor(btn, "touch", 600)
+    expect(screen.getByRole("tooltip")).toBeInTheDocument()
+
+    fireEvent.pointerCancel(btn, { pointerType: "touch" })
+    // Enter/Space activation produces a click with no pointer click count.
+    fireEvent.click(btn, { detail: 0 })
+
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith("👍")
+  })
+
   it("names the emoji in the popover heading", () => {
     renderSeeded([])
     pressFor(screen.getByRole("button"), "touch", 600)
