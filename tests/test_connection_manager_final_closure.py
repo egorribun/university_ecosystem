@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +10,7 @@ from fastapi import WebSocket
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_cleans_last_connection_and_logs_paths():
+async def test_connection_manager_cleans_last_connection_and_logs_paths() -> None:
     from app.api.ws import connection_manager as module
 
     manager = module.ConnectionManager()
@@ -17,7 +18,7 @@ async def test_connection_manager_cleans_last_connection_and_logs_paths():
     websocket = AsyncMock(spec=WebSocket)
     manager.active_connections[user_id] = {websocket}
     manager.connection_users[websocket] = user_id
-    manager._last_presence_sent_at[user_id] = object()
+    manager._last_presence_sent_at[user_id] = datetime.now(UTC)
 
     assert await manager.disconnect(websocket) == user_id
     assert user_id not in manager.active_connections
@@ -25,7 +26,9 @@ async def test_connection_manager_cleans_last_connection_and_logs_paths():
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_accepts_without_subprotocol_and_reports_online():
+async def test_connection_manager_accepts_without_subprotocol_and_reports_online() -> (
+    None
+):
     from app.api.ws import connection_manager as module
 
     manager = module.ConnectionManager()
@@ -47,7 +50,9 @@ async def test_connection_manager_accepts_without_subprotocol_and_reports_online
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_sends_live_messages_and_cleans_mapped_dead_peer():
+async def test_connection_manager_sends_live_messages_and_cleans_mapped_dead_peer() -> (
+    None
+):
     from app.api.ws import connection_manager as module
 
     manager = module.ConnectionManager()
@@ -71,7 +76,5 @@ async def test_connection_manager_sends_live_messages_and_cleans_mapped_dead_pee
         assert sent == 1
         live.send_json.assert_awaited_once_with({"type": "ping"})
         assert dead not in manager.active_connections[user_id]
-        logger.info.assert_called_once_with(
-            "ws_batch_disconnected", user_id=str(user_id)
-        )
+        logger.info.assert_called_once_with("ws_batch_disconnected")
         assert await manager.send_to_user(user_id, {"type": "second"}) == 1

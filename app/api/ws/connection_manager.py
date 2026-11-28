@@ -196,7 +196,6 @@ class ConnectionManager:
                 await websocket.close(code=1008, reason="Connection limit exceeded")
                 logger.warning(
                     "ws_connection_limit_reached",
-                    user_id=str(user_id),
                     current=len(current_conns),
                     limit=limit,
                 )
@@ -214,7 +213,7 @@ class ConnectionManager:
             burst = settings.ws_message_burst
             self.rate_limiters[websocket] = WebSocketRateLimiter(rate, burst)
 
-        logger.info("ws_connected", user_id=str(user_id))
+        logger.info("ws_connected")
         return True
 
     async def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
@@ -226,7 +225,7 @@ class ConnectionManager:
         async with self._get_lock():
             user_id = self._remove_connection_locked(websocket)
             if user_id is not None:
-                logger.info("ws_disconnected", user_id=str(user_id))
+                logger.info("ws_disconnected")
             return user_id
 
     def check_rate_limit(self, websocket: WebSocket) -> bool:
@@ -296,7 +295,7 @@ class ConnectionManager:
             # TD-14-06 (audit Wave 14): Narrow exception types.  The previous
             # bare ``except Exception`` swallowed unexpected errors silently.
             except (WebSocketDisconnect, RuntimeError, ConnectionError) as exc:
-                logger.warning("ws_send_failed", user_id=str(user_id), err=str(exc))
+                logger.warning("ws_send_failed", exception_type=type(exc).__name__)
                 if connection not in dead_connections:
                     dead_connections.append(connection)
 
@@ -306,7 +305,7 @@ class ConnectionManager:
                 for conn in dead_connections:
                     uid = self._remove_connection_locked(conn)
                     if uid is not None:
-                        logger.info("ws_batch_disconnected", user_id=str(uid))
+                        logger.info("ws_batch_disconnected")
 
         return sent
 
