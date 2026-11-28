@@ -204,6 +204,10 @@ export function NewChatModal({
     enabled: open && Array.from(debouncedSearch.trim()).length >= MIN_SEARCH_LENGTH,
   })
 
+  const hasSearchQuery = Array.from(search.trim()).length >= MIN_SEARCH_LENGTH
+  const showCurrentSearch = hasSearchQuery && search === debouncedSearch
+  const isSearchLoading = hasSearchQuery && (!showCurrentSearch || isLoading)
+
   return (
     <AnimatePresence>
       {open && (
@@ -347,7 +351,7 @@ export function NewChatModal({
                     of the eventual results — skeleton rows give users a visual
                     preview of what's coming. W183 SW4 a11y semantics preserved
                     (role=status + aria-live=polite + aria-label). */}
-                {isLoading && (
+                {isSearchLoading && (
                   <div
                     className="space-y-1"
                     role="status"
@@ -381,7 +385,7 @@ export function NewChatModal({
                     loading (so refetch-in-flight shows the spinner, not
                     the stale error). TriangleAlert + matte container +
                     Retry button matches ContactList isError pattern. */}
-                {!isLoading && isError && (
+                {showCurrentSearch && !isLoading && isError && (
                   <div
                     className="flex flex-col items-center py-10 px-4 text-center"
                     role="alert"
@@ -419,26 +423,23 @@ export function NewChatModal({
                   </div>
                 )}
 
-                {!isLoading &&
-                  !isError &&
-                  users.length === 0 &&
-                  Array.from(search.trim()).length >= MIN_SEARCH_LENGTH && (
+                {showCurrentSearch && !isLoading && !isError && users.length === 0 && (
+                  <div
+                    className="text-center py-12 px-4 space-y-2"
+                    role="status"
+                    aria-live="polite"
+                  >
                     <div
-                      className="text-center py-12 px-4 space-y-2"
-                      role="status"
-                      aria-live="polite"
+                      className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim"
+                      aria-hidden="true"
                     >
-                      <div
-                        className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim"
-                        aria-hidden="true"
-                      >
-                        <Search className="w-8 h-8" />
-                      </div>
-                      <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
-                        {t("messenger:noUsersFound")}
-                      </p>
+                      <Search className="w-8 h-8" />
                     </div>
-                  )}
+                    <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
+                      {t("messenger:noUsersFound")}
+                    </p>
+                  </div>
+                )}
 
                 {/* Wave 183 SW4 — added role=listbox on container + role=option on
                     each user row so screen readers announce "list of N options"
@@ -452,10 +453,10 @@ export function NewChatModal({
                   className="space-y-1"
                   role="listbox"
                   aria-label={t("messenger:searchUsers")}
-                  aria-busy={isLoading}
+                  aria-busy={isSearchLoading}
                   aria-multiselectable={isGroupMode}
                 >
-                  {users.map((user) => {
+                  {(showCurrentSearch ? users : []).map((user) => {
                     // Wave 211 G4 — group mode: a row tap toggles selection (the
                     // Check indicator + violet tint reflect it); DM mode keeps the
                     // single-select onSelect.
