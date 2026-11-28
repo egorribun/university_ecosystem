@@ -2,11 +2,13 @@ package hub
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/logging"
 )
 
 func registerNotificationRoutingClient(t *testing.T, h *Hub, connectionID, userID string) *Client {
@@ -120,4 +122,37 @@ func TestNotificationRoutingDoesNotFallBackWhenUserHasNoSession(t *testing.T) {
 	}
 	assert.Empty(t, h.collectRecipients(&Message{Type: "notification"}, nil),
 		"a notification without a destination must never collect all clients")
+}
+
+func TestHandleNotifications_DiagnosticsOmitSubjectRecipient(t *testing.T) {
+	const recipient = "sample-recipient-identifier"
+	for _, tc := range []struct {
+		name, data, warning string
+		fill                bool
+	}{
+		{"malformed", "not json", "malformed NATS notification dropped", false},
+		{"destination mismatch", `{"to":"another-recipient"}`, "NATS notification destination rejected", false},
+		{"full queue", `{"to":"sample-recipient-identifier"}`, "Broadcast channel full, dropping NATS notification", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs strings.Builder
+			h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 1)
+			h.Logger = logging.NewJSONLogger(&logs, nil)
+			if tc.fill {
+				h.Broadcast <- &Message{Type: "existing"}
+			}
+
+			h.handleNotifications(t.Context())(&nats.Msg{
+				Subject: "notifications." + recipient,
+				Data:    []byte(tc.data),
+			})
+
+			assert.Contains(t, logs.String(), tc.warning)
+			assert.NotContains(t, logs.String(), recipient)
+			if tc.fill {
+				assert.Equal(t, "existing", recvBroadcast(t, h).Type)
+			}
+			assert.Empty(t, h.Broadcast)
+		})
+	}
 }
