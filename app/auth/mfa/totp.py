@@ -476,7 +476,6 @@ async def verify_totp_for_user(
                         "Skipping TOTP enrollment: decryption failed",
                         extra={
                             "event": "mfa.totp.enrollment_skipped",
-                            "user_id": str(user.id),
                             "reason": "decryption_failed",
                         },
                     )
