@@ -80,7 +80,10 @@ async def _invalidate_for_update(
         resource_id: str = rel.resource.object_id
         user_id: str = rel.subject.object.object_id
     except AttributeError:
-        logger.debug("SpiceDB Watch: unrecognised update shape: %r", update)
+        logger.debug(
+            "SpiceDB Watch: unrecognised update shape",
+            update_type=type(update).__name__,
+        )
         return
 
     # 1. Local _permission_cache eviction
@@ -97,11 +100,9 @@ async def _invalidate_for_update(
 
     if keys_to_evict:
         logger.debug(
-            "SpiceDB Watch: evicted %d local cache entries for %s:%s (user=%s)",
-            len(keys_to_evict),
-            resource_type,
-            resource_id,
-            user_id,
+            "SpiceDB Watch: evicted local cache entries",
+            entry_count=len(keys_to_evict),
+            resource_type=resource_type,
         )
 
     # 2. Redis authorization cache invalidation
@@ -110,11 +111,10 @@ async def _invalidate_for_update(
 
         redis_cache = get_cache()
         await redis_cache.invalidate(f"auth:perms:{user_id}*", f"auth:perms:{user_id}")
-    except Exception:  # RZ-22-01-JUSTIFIED: defensive cache invalidation
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: defensive cache invalidation
         logger.warning(
-            "SpiceDB Watch: failed to invalidate Redis authorization cache for user %s",
-            user_id,
-            exc_info=True,
+            "SpiceDB Watch: failed to invalidate Redis authorization cache",
+            error_type=type(exc).__name__,
         )
 
     # 3. NATS Disconnect Event Publish via WsHubClient
@@ -127,11 +127,10 @@ async def _invalidate_for_update(
             action="disconnect",
             reason="access_revoked",
         )
-    except Exception:  # RZ-22-01-JUSTIFIED: defensive NATS event publish
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: defensive NATS event publish
         logger.warning(
-            "SpiceDB Watch: failed to publish NATS control disconnect event for user %s",
-            user_id,
-            exc_info=True,
+            "SpiceDB Watch: failed to publish NATS control disconnect event",
+            error_type=type(exc).__name__,
         )
 
     # 4. Metrics recording
@@ -179,9 +178,9 @@ async def start_permission_watch() -> None:
             return
         except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — reconnect loop must survive any stream error (reviewed TD-27-04)
             logger.warning(
-                "SpiceDB Watch: stream error (%s) — reconnecting in %.0fs",
-                exc,
-                backoff,
+                "SpiceDB Watch: stream error, reconnecting",
+                error_type=type(exc).__name__,
+                retry_delay_seconds=backoff,
             )
             # Clear cache so the first post-reconnect request hits SpiceDB live.
             _permission_cache.clear()

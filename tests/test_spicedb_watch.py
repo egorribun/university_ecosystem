@@ -3,6 +3,7 @@ import time
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.core.spicedb_watch import (
     _invalidate_for_update,
@@ -101,6 +102,48 @@ async def test_invalidate_for_update_full_pipeline():
     del malformed_update.relationship
     # Should not raise exception
     await _invalidate_for_update(malformed_update, cache)
+
+
+@pytest.mark.anyio
+async def test_update_diagnostics_omit_object_identifiers():
+    update = MagicMock(name="permission-update")
+    update.relationship.resource.object_type = "document"
+    update.relationship.resource.object_id = "private-document"
+    update.relationship.subject.object.object_id = "private-account"
+    cache = {("private-account", "document", "private-document", "read"): (True, 0)}
+    redis = AsyncMock()
+    redis.invalidate.side_effect = ConnectionError("cache backend detail")
+    ws_client = AsyncMock()
+    ws_client.publish_control_event.side_effect = TimeoutError("broker detail")
+
+    with (
+        patch("app.deps.cache.get_cache", return_value=redis),
+        patch("app.services.ws_hub_client._get_client", return_value=ws_client),
+        capture_logs() as logs,
+    ):
+        await _invalidate_for_update(update, cache)
+        await _invalidate_for_update({"object_id": "private-document"}, cache)
+
+    assert cache == {}
+    assert [(log["event"], log["log_level"]) for log in logs] == [
+        ("SpiceDB Watch: evicted local cache entries", "debug"),
+        ("SpiceDB Watch: failed to invalidate Redis authorization cache", "warning"),
+        ("SpiceDB Watch: failed to publish NATS control disconnect event", "warning"),
+        ("SpiceDB Watch: unrecognised update shape", "debug"),
+    ]
+    assert logs[0]["entry_count"] == 1
+    assert logs[1]["error_type"] == "ConnectionError"
+    assert logs[2]["error_type"] == "TimeoutError"
+    assert logs[3]["update_type"] == "dict"
+    rendered = repr(logs)
+    for detail in (
+        "private-account",
+        "private-document",
+        "cache backend detail",
+        "broker detail",
+        "exc_info",
+    ):
+        assert detail not in rendered
 
 
 @pytest.mark.anyio
@@ -204,8 +247,20 @@ async def test_start_permission_watch_loop():
 
         with patch("app.core.spicedb_watch._watch_once", side_effect=mock_watch):
             with patch("app.auth.rbac._permission_cache", cache):
-                with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                with (
+                    patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+                    capture_logs() as logs,
+                ):
                     await start_permission_watch()
+                    warnings = [log for log in logs if log["log_level"] == "warning"]
+                    assert warnings == [
+                        {
+                            "event": "SpiceDB Watch: stream error, reconnecting",
+                            "error_type": "ValueError",
+                            "retry_delay_seconds": 1.0,
+                            "log_level": "warning",
+                        }
+                    ]
 
                     # On connection error, cache should be cleared
                     assert len(cache) == 0
