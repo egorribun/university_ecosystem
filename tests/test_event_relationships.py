@@ -104,23 +104,86 @@ def test_build_update_rejects_unknown_operation_and_relation():
         )
 
 
-@pytest.mark.asyncio
-async def test_write_failure_raises_typed_error():
-    write = AsyncMock(
-        side_effect=grpc.aio.AioRpcError(
-            code=grpc.StatusCode.UNAVAILABLE,
-            initial_metadata=grpc.aio.Metadata(),
-            trailing_metadata=grpc.aio.Metadata(),
-            details="down",
-        )
+def _rpc_error(code: grpc.StatusCode) -> grpc.aio.AioRpcError:
+    return grpc.aio.AioRpcError(
+        code=code,
+        initial_metadata=grpc.aio.Metadata(),
+        trailing_metadata=grpc.aio.Metadata(),
+        details="down",
     )
+
+
+@pytest.mark.asyncio
+async def test_write_failure_raises_typed_error_after_bounded_retries():
+    write = AsyncMock(side_effect=_rpc_error(grpc.StatusCode.UNAVAILABLE))
+    sleep = AsyncMock()
     with (
         patch.object(
             relationships, "PermissionsServiceStub", return_value=_stub_with(write)
         ),
+        patch.object(relationships.asyncio, "sleep", sleep),
         pytest.raises(RelationshipWriteError),
     ):
         await EventRelationshipWriter(MagicMock()).touch_creator(uuid4(), uuid4())
+
+    assert write.await_count == 1 + len(relationships.RETRY_DELAYS_SECONDS)
+    assert [call.args[0] for call in sleep.await_args_list] == list(
+        relationships.RETRY_DELAYS_SECONDS
+    )
+
+
+@pytest.mark.asyncio
+async def test_transient_write_failures_are_retried_until_confirmed():
+    write = AsyncMock(
+        side_effect=[_rpc_error(grpc.StatusCode.UNAVAILABLE), OSError("reset"), None]
+    )
+    sleep = AsyncMock()
+    with (
+        patch.object(
+            relationships, "PermissionsServiceStub", return_value=_stub_with(write)
+        ),
+        patch.object(relationships.asyncio, "sleep", sleep),
+    ):
+        # The creator grant is confirmed on the third attempt; nothing is raised.
+        await EventRelationshipWriter(MagicMock()).touch_creator(uuid4(), uuid4())
+
+    assert write.await_count == 3
+    assert len({id(call.args[0]) for call in write.await_args_list}) == 1
+    assert sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_permanent_write_failure_is_not_retried():
+    write = AsyncMock(side_effect=_rpc_error(grpc.StatusCode.PERMISSION_DENIED))
+    sleep = AsyncMock()
+    with (
+        patch.object(
+            relationships, "PermissionsServiceStub", return_value=_stub_with(write)
+        ),
+        patch.object(relationships.asyncio, "sleep", sleep),
+        pytest.raises(RelationshipWriteError),
+    ):
+        await EventRelationshipWriter(MagicMock()).touch_creator(uuid4(), uuid4())
+
+    assert write.await_count == 1
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retries_share_the_overall_write_timeout(monkeypatch):
+    monkeypatch.setattr(relationships, "WRITE_TIMEOUT_SECONDS", 0.05)
+    write = AsyncMock(side_effect=_rpc_error(grpc.StatusCode.UNAVAILABLE))
+    with (
+        patch.object(
+            relationships, "PermissionsServiceStub", return_value=_stub_with(write)
+        ),
+        pytest.raises(RelationshipWriteError) as raised,
+    ):
+        await EventRelationshipWriter(MagicMock()).touch_creator(uuid4(), uuid4())
+
+    # The first pause (0.2 s) outlasts the 0.05 s budget: no second attempt.
+    assert write.await_count == 1
+    assert isinstance(raised.value.__cause__, TimeoutError)
 
 
 @pytest.mark.asyncio

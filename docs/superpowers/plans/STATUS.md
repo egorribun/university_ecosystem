@@ -4,13 +4,13 @@
 в истории файла: `git log -- docs/superpowers/plans/STATUS.md`. Покрытие строк ТЗ — в
 [матрице трассируемости](../../testing/mvp-traceability-matrix.md).
 
-## Текущий срез — 2026-11-26
+## Текущий срез — 2026-11-28
 
 ### `main`
 
-- `main` = `0cc886f4477e4d4a3fbd7b1c35853c7859c3e337` после обычного merge
-  [#1615](https://github.com/egorribun/university_ecosystem/pull/1615) 2026-11-26 в 00:38:49 UTC.
-  Все 78 required checks и CodeQL прошли на head `67725f224`.
+- `main` = `d5001041acff1aa77e34d84ef178b921d8ad4c7f` после обычного merge
+  [#1697](https://github.com/egorribun/university_ecosystem/pull/1697) (ожидания FCM) 2026-11-27 в 23:37 UTC.
+  Все 78 required checks и CodeQL прошли на head `c28e9bfdd`.
 - После `7e54feee` влиты:
   - [#1578](https://github.com/egorribun/university_ecosystem/pull/1578): Caddy с `libcrypto3`/`libssl3`
     `3.5.9-r1` (исключение из cooldown, [DEPENDENCY_COOLDOWN_EMERGENCY.md](../../DEPENDENCY_COOLDOWN_EMERGENCY.md),
@@ -37,18 +37,17 @@
 стартов Core-job не менее 7200 секунд, только с 8 утверждёнными skip и всеми шестью кейсами AUD-154 с
 retry 0. Во время серии ничего не сливать в `main`.
 
-- Core №1 на `0cc886f44` ([45730228762](https://github.com/egorribun/university_ecosystem/actions/runs/45730228762))
-  не зачтён: `map-zoom-longtask` упал на обоих проектах (long task 50–76 мс при пороге 50 мс), два push-кейса
-  flaky в пробе провайдера (задержка доставки FCM, воркер получил 201). Серия сброшена. Long task — шум
-  раннера: продуктовый код с `1d5294bf` не менялся, а там map zoom проходил дважды.
+- Core №1 на `d5001041a` ([46083562865](https://github.com/egorribun/university_ecosystem/actions/runs/46083562865))
+  не зачтён: mobile `notification-topics-delivery` получил 403 на DELETE своего мероприятия (не записан
+  best-effort `event#creator`; запись теперь повторяется при временных сбоях SpiceDB); flaky — map zoom
+  (51 мс) и `messenger-membership-revocation`. На `0cc886f44` map zoom (50–76 мс) был шумом раннера.
 - Серии на `7e54feee`, `a2d295bc7`, `15d7cadf4`, `dd7296b8d`, `91c414a75`, `29ae8dd63`, `e45e5520f`,
   `99867d9b1` и `1d5294bf` срывались на flaky. Все шесть кейсов AUD-154 каждый раз проходили с retry 0.
   - Web Push 410 у свежей подписки: снято выдержкой 15 секунд и переподпиской.
   - Гонка допуска в комнату при переподключении: исправлена в #1596.
   - footer; задержка доставки FCM → Chrome (ожидания подняты до 120 и 60 секунд).
-  - Desktop `notification-topics-delivery`: на `1d5294bf`
-    ([45710907331](https://github.com/egorribun/university_ecosystem/actions/runs/45710907331)) cleanup не удалил
-    событие учителя; проверяется гипотеза о пропущенной best-effort записи SpiceDB `event#creator` (403).
+  - `notification-topics-delivery`: 403 на cleanup мероприятия учителя (desktop на `1d5294bf`, mobile на
+    `d5001041a`) — пропущенная best-effort запись SpiceDB `event#creator`.
 
 ### DAST на тогдашнем `main` `4e9246c99`: AUD-381 закрыт (scoped)
 
@@ -136,6 +135,7 @@ dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`.
   к сессии (2026-11-23).
 - OpenSSL 3.5.9-r1 в Caddy принят досрочно; fence статистики не поддерживает NATS KV (2026-11-24).
 - Live Web Push: выдержка 15 с и до двух переподписок (2026-11-25); ожидания: нативное 120 с, проба 60 с (2026-11-26).
+- Ожидание WebSocket-сообщения в `messenger-membership-revocation` — 60 с (2026-11-28).
   Service worker не обрывает чтения страницы при восстановлении той же сессии; исправление (#1604)
   вливается после зачёта пары (2026-11-25).
 
