@@ -171,15 +171,19 @@ class SuspiciousActivityEvent:
     severity: str  # "low", "medium", "high"
 
     def to_log_record(self) -> dict[str, Any]:
-        """Convert to a structured log record."""
+        """Keep operational diagnostics separate from the in-memory event."""
+        safe_details: dict[str, Any] = {
+            key: self.details[key]
+            for key in ("mismatched_fields", "elapsed_seconds")
+            if key in self.details
+        }
         return {
             "event": "suspicious_activity",
             "user_id": self.user_id,
-            "session_id": self.session_id,
             "event_type": self.event_type,
             "severity": self.severity,
             "timestamp": self.timestamp.isoformat(),
-            **self.details,
+            **safe_details,
         }
 
 
