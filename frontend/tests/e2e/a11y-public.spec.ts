@@ -304,18 +304,19 @@ function authCardLayoutIssues(geometry: AuthCardGeometry): string[] {
 test.describe("public auth form layout", () => {
   test.use({ serviceWorkers: "block" })
 
+  // A fresh Playwright context keeps each variant's preferences isolated,
+  // including when application startup reloads the document.
   for (const route of AUTH_LAYOUT_ROUTES) {
     for (const width of AUTH_LAYOUT_WIDTHS) {
-      test(`${route.name} card stays inside a ${width}px viewport in RU and EN, light and dark`, async ({
-        page,
-        context,
-        baseURL,
-      }) => {
-        if (!baseURL) throw new Error("The auth layout check requires a configured baseURL")
-        await page.setViewportSize({ width, height: 900 })
-
-        for (const language of AUTH_LAYOUT_LANGUAGES) {
-          for (const theme of THEMES) {
+      for (const language of AUTH_LAYOUT_LANGUAGES) {
+        for (const theme of THEMES) {
+          test(`${route.name} card stays inside a ${width}px viewport (${language}, ${theme.name})`, async ({
+            page,
+            context,
+            baseURL,
+          }) => {
+            if (!baseURL) throw new Error("The auth layout check requires a configured baseURL")
+            await page.setViewportSize({ width, height: 900 })
             const label = `${route.name} ${width}px ${language} ${theme.name}`
             // The application reads its saved language and theme from these
             // keys; emulating the browser locale or color scheme alone does
@@ -324,7 +325,6 @@ test.describe("public auth form layout", () => {
               { name: "ue:language", value: language, url: baseURL },
               { name: "ue-mode", value: theme.name, url: baseURL },
             ])
-            // Init scripts run in registration order, so the last one wins.
             await page.addInitScript(
               ({ savedLanguage, savedTheme }) => {
                 window.localStorage.setItem("ue:language", savedLanguage)
@@ -365,9 +365,9 @@ test.describe("public auth form layout", () => {
                 { message: `${label}: the auth card must fit the viewport`, timeout: 10_000 }
               )
               .toEqual([])
-          }
+          })
         }
-      })
+      }
     }
   }
 })
