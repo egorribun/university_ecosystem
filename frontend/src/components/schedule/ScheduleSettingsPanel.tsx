@@ -129,7 +129,7 @@ export function ScheduleSettingsPanel({
                     type="button"
                     onClick={previousWeek}
                     aria-label={t("schedule:toolbar.prevWeek")}
-                    className="sched-settings-btn flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+                    className="sched-settings-btn flex min-h-11 min-w-11 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <ChevronLeft size={16} aria-hidden="true" />
                   </button>
@@ -137,7 +137,7 @@ export function ScheduleSettingsPanel({
                     type="button"
                     onClick={goToCurrentWeek}
                     className={cn(
-                      "relative flex-1 rounded-xl px-4 py-2.5 text-center text-sm font-semibold",
+                      "relative min-h-11 flex-1 rounded-xl px-4 py-2.5 text-center text-sm font-semibold",
                       weekOffset === 0
                         ? "bg-brand text-inverse-text shadow-glow-primary"
                         : "sched-settings-btn text-text-primary"
@@ -153,7 +153,7 @@ export function ScheduleSettingsPanel({
                     type="button"
                     onClick={nextWeek}
                     aria-label={t("schedule:toolbar.nextWeek")}
-                    className="sched-settings-btn flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+                    className="sched-settings-btn flex min-h-11 min-w-11 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <ChevronRight size={16} aria-hidden="true" />
                   </button>
@@ -162,7 +162,7 @@ export function ScheduleSettingsPanel({
                       type="button"
                       onClick={goToCurrentWeek}
                       aria-label={t("schedule:toolbar.goToToday")}
-                      className="sched-settings-btn flex h-10 w-10 items-center justify-center rounded-xl text-brand focus-visible:ring-2 focus-visible:ring-brand"
+                      className="sched-settings-btn flex min-h-11 min-w-11 items-center justify-center rounded-xl text-brand focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       <RotateCcw size={14} aria-hidden="true" />
                     </button>
