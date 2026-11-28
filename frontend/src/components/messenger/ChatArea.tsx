@@ -440,9 +440,8 @@ export const ChatArea = memo(function ChatArea({
               The raw `searchQuery` is passed through; ChatWindow applies
               `useDebounced(searchQuery, "search")` (200ms) internally so the
               per-keystroke render does NOT re-filter the message array.
-              onClearSearch clears the query but keeps the search input
-              mounted (showSearchInChat stays true) so the user can type a
-              new query immediately — matches W183 SW1 ContactList pattern. */}
+              onClearSearch keeps search open and returns focus to the input
+              so the user can type a new query immediately. */}
           <ChatWindow
             key={selectedChatId}
             chatId={selectedChatId}
@@ -455,7 +454,10 @@ export const ChatArea = memo(function ChatArea({
             olderMessagesError={olderMessagesError}
             onLoadOlder={onLoadOlderMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
-            onClearSearch={() => setSearchQuery("")}
+            onClearSearch={() => {
+              setSearchQuery("")
+              searchInput?.focus()
+            }}
             editingMessageId={editingMessageId}
             editingMessageContent={editingMessageContent}
             onEditingContentChange={onEditingContentChange}
