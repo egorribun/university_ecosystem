@@ -99,63 +99,67 @@ export function NavbarOverflowMenu({
         <MoreHorizontal size={18} />
       </m.button>
 
-      <AnimatePresence>
-        {open && (
-          <m.div
-            id="navbar-overflow-menu"
-            ref={menuRef}
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -4 }}
-            transition={
-              prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }
-            }
-            role="menu"
-            aria-label={t("navigation:aria.overflowMenu")}
-            className="absolute right-0 top-full z-dropdown mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-md"
-            onKeyDown={(event) => {
-              const menuItems = Array.from(
-                event.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']")
-              )
-              const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement)
-              let nextIndex: number | undefined
-              if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % menuItems.length
-              if (event.key === "ArrowUp")
-                nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
-              if (event.key === "Home") nextIndex = 0
-              if (event.key === "End") nextIndex = menuItems.length - 1
-              const nextItem = getOverflowItemAt(menuItems, nextIndex)
-              if (nextItem) {
-                event.preventDefault()
-                nextItem.focus()
+      <div
+        id="navbar-overflow-menu"
+        className="absolute right-0 top-full z-dropdown mt-2 min-w-48 empty:hidden"
+      >
+        <AnimatePresence>
+          {open && (
+            <m.div
+              ref={menuRef}
+              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+              transition={
+                prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: [0.16, 1, 0.3, 1] }
               }
-            }}
-          >
-            {items.map((item) => {
-              const Icon = item.icon
-              const active = isActive(item.to)
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  role="menuitem"
-                  tabIndex={-1}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setOpen(false)
-                    go(item.to)
-                  }}
-                  className="mobile-nav-link text-sm"
-                  data-active={active || undefined}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </m.div>
-        )}
-      </AnimatePresence>
+              role="menu"
+              aria-label={t("navigation:aria.overflowMenu")}
+              className="rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-md"
+              onKeyDown={(event) => {
+                const menuItems = Array.from(
+                  event.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']")
+                )
+                const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement)
+                let nextIndex: number | undefined
+                if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % menuItems.length
+                if (event.key === "ArrowUp")
+                  nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
+                if (event.key === "Home") nextIndex = 0
+                if (event.key === "End") nextIndex = menuItems.length - 1
+                const nextItem = getOverflowItemAt(menuItems, nextIndex)
+                if (nextItem) {
+                  event.preventDefault()
+                  nextItem.focus()
+                }
+              }}
+            >
+              {items.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.to)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    role="menuitem"
+                    tabIndex={-1}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      setOpen(false)
+                      go(item.to)
+                    }}
+                    className="mobile-nav-link text-sm"
+                    data-active={active || undefined}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </m.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
