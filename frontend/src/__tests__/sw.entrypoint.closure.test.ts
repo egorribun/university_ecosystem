@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   clientsClaim: vi.fn(),
   initApiCaching: vi.fn(),
   clearSessionCaches: vi.fn(),
+  suspendSessionCaches: vi.fn(),
   purgeLegacyCaches: vi.fn(),
   setSessionHash: vi.fn(),
   log: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("workbox-core", () => ({ clientsClaim: mocks.clientsClaim }))
 vi.mock("../sw/api", () => ({
   initApiCaching: mocks.initApiCaching,
   clearSessionCaches: mocks.clearSessionCaches,
+  suspendSessionCaches: mocks.suspendSessionCaches,
   purgeLegacyCaches: mocks.purgeLegacyCaches,
   setSessionHash: mocks.setSessionHash,
 }))
@@ -266,6 +268,9 @@ describe("service-worker entrypoint", () => {
     )
     listener?.(message({ data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }, waitUntil }))
     listener?.(
+      message({ data: { type: SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE }, waitUntil })
+    )
+    listener?.(
       message({
         data: { type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE },
         waitUntil,
@@ -282,7 +287,8 @@ describe("service-worker entrypoint", () => {
     expect(scope.skipWaiting).toHaveBeenCalledOnce()
     expect(mocks.setSessionHash).toHaveBeenCalledOnce()
     expect(mocks.setSessionHash).toHaveBeenCalledWith("session-a", undefined)
-    expect(waitUntil).toHaveBeenCalledTimes(3)
+    expect(mocks.suspendSessionCaches).toHaveBeenCalledExactlyOnceWith()
+    expect(waitUntil).toHaveBeenCalledTimes(4)
     expect(waitUntil).toHaveBeenCalledWith(expect.any(Promise))
   })
 

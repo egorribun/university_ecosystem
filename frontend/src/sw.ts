@@ -3,7 +3,13 @@ declare const self: ServiceWorkerGlobalScope
 
 import { clientsClaim } from "workbox-core"
 
-import { initApiCaching, clearSessionCaches, setSessionHash, purgeLegacyCaches } from "./sw/api"
+import {
+  initApiCaching,
+  clearSessionCaches,
+  setSessionHash,
+  purgeLegacyCaches,
+  suspendSessionCaches,
+} from "./sw/api"
 import { error, log } from "./sw/logger"
 import { initMediaCaching } from "./sw/media"
 import { initOfflineQueue, processOfflineQueues } from "./sw/offline"
@@ -131,6 +137,9 @@ self.addEventListener("message", (event) => {
     }
     case SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE:
       event.waitUntil(clearSessionCaches())
+      break
+    case SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE:
+      event.waitUntil(suspendSessionCaches())
       break
     case SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE:
     case SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES:
