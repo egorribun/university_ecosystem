@@ -126,6 +126,7 @@ interface NotificationListResponse {
 interface ApiMutationResult {
   status: number
   body: unknown
+  csrfRejected?: boolean
 }
 
 interface NativeNotification {
@@ -221,10 +222,31 @@ const mutate = async (
       return {
         status: response.status,
         body: await response.json().catch(() => null),
+        csrfRejected: response.headers.get("X-CSRF-Rejected") === "1",
       }
     },
     { requestPath: path, requestMethod: method, requestBody: payload ?? null }
   )
+
+// A 403 on the teacher's own event delete has three candidate causes: a CSRF
+// rejection, a fail-closed SpiceDB check during a transient outage, or a missing
+// event#creator grant. Report the CSRF marker and the status of one delayed
+// repeat (bounded statuses only); the original 403 still fails the cleanup.
+let topicsCleanupProject: string | null = null
+const diagnoseEventDeleteDenial = async (
+  page: Page,
+  path: string,
+  denial: ApiMutationResult
+): Promise<ApiMutationResult> => {
+  const project = topicsCleanupProject
+  topicsCleanupProject = null
+  if (denial.status !== 403 || project === null) return denial
+  if (denial.csrfRejected === true) reportLiveHttpStatus(project, "topics-cleanup-csrf", 403)
+  await page.waitForTimeout(3_000)
+  const repeat = await mutate(page, path, "DELETE")
+  reportLiveHttpStatus(project, "topics-cleanup-retry", repeat.status)
+  return denial
+}
 
 const listUsersCompletely = async (adminPage: Page, groupId?: string): Promise<UserRow[]> => {
   const allUsers: UserRow[] = []
@@ -1135,6 +1157,7 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
 }, testInfo) => {
   test.setTimeout(360_000)
   topicsStatusProject = testInfo.project.name
+  topicsCleanupProject = testInfo.project.name
   const liveBaseUrl = process.env.LIVE_BASE_URL
   if (!liveBaseUrl) throw new Error("LIVE_BASE_URL must be set by the live acceptance runner")
   const recipientObservation = createPushRecipientObservation(
@@ -1758,10 +1781,11 @@ test("news, events, schedule changes and system releases reach the opted-in Chro
   }
   if (eventId && teacherPage) {
     await attemptCleanup(async () => {
-      const deletion = await mutate(
+      const eventPath = `/api/v1/events/${encodeURIComponent(eventId!)}`
+      const deletion = await diagnoseEventDeleteDenial(
         teacherPage,
-        `/api/v1/events/${encodeURIComponent(eventId!)}`,
-        "DELETE"
+        eventPath,
+        await mutate(teacherPage, eventPath, "DELETE")
       )
       const deleted = assertMutationStatus(
         deletion,
