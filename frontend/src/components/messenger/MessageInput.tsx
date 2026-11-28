@@ -344,6 +344,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
                 : "text-(--text-secondary)"
             )}
             aria-label={t("messenger:aria.attachments")}
+            aria-expanded={showAttachMenu}
           >
             <Paperclip
               size={20}
