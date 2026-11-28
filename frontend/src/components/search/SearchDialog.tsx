@@ -161,10 +161,10 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
     ...(data?.results.news ?? []),
     ...(data?.results.events ?? []),
   ].sort((a, b) => b.score - a.score)
-  const showResults = query.length >= 2 && debouncedQuery.length >= 2
+  const showResults = query.length >= 2 && query === debouncedQuery
   const activeResult = showResults && !isLoading && !isError ? allResults[activeIndex] : undefined
   let searchStatus = ""
-  if (showResults && query === debouncedQuery && !isError) {
+  if (showResults && !isError) {
     if (isLoading) {
       searchStatus = t("common:search.loading")
     } else if (activeResult) {

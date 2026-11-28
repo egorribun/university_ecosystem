@@ -71,7 +71,10 @@ const response = {
   },
 }
 
-async function renderSearch(language = "en") {
+async function renderSearch(
+  language = "en",
+  subscribeOpenRequest?: (listener: () => void) => () => void
+) {
   const i18n = createInstance()
   await i18n.init({
     lng: language,
@@ -84,7 +87,7 @@ async function renderSearch(language = "en") {
   const rootRoute = createRootRoute({
     component: () => (
       <>
-        <SearchDialog />
+        <SearchDialog subscribeOpenRequest={subscribeOpenRequest} />
         <Outlet />
       </>
     ),
@@ -326,6 +329,21 @@ describe("SearchDialog user behavior", () => {
     expect(openSearch()).toHaveValue("")
   })
 
+  it("opens from the external toolbar request and unsubscribes on unmount", async () => {
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn<(listener: () => void) => () => void>().mockReturnValue(unsubscribe)
+    const view = await renderSearch("en", subscribe)
+    expect(subscribe).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+    const openFromToolbar = subscribe.mock.calls[0]?.[0]
+    expect(openFromToolbar).toBeTypeOf("function")
+    act(() => openFromToolbar?.())
+    expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument()
+    view.unmount()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+
   it("ignores an unmodified K and displays the Windows shortcut", async () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32")
     await renderSearch()
@@ -438,6 +456,58 @@ describe("SearchDialog user behavior", () => {
     expect(router.state.location.pathname).toBe("/")
     expect(localStorage.getItem(RECENT_SEARCHES_KEY)).toBeNull()
   })
+
+  it.each(["pointer", "keyboard"] as const)(
+    "does not offer old results for %s selection during a new query",
+    async (interaction) => {
+      const { router } = await renderSearch()
+      const input = await showResults()
+      vi.useFakeTimers()
+      apiGet.mockResolvedValue({
+        data: {
+          query: "chemistry",
+          results: {
+            news: [
+              {
+                id: "303",
+                type: "news",
+                title: "Chemistry workshop",
+                score: 0.8,
+                url: "/news/303",
+              },
+            ],
+            events: [],
+          },
+        },
+      })
+
+      fireEvent.change(input, { target: { value: "chemistry" } })
+      if (interaction === "pointer") {
+        expect(screen.queryByRole("button", { name: "Physics seminar" })).not.toBeInTheDocument()
+      } else {
+        expect(press(input, "ArrowDown").defaultPrevented).toBe(false)
+        expect(press(input, "Enter").defaultPrevented).toBe(false)
+      }
+      expect(router.state.location.pathname).toBe("/")
+      expect(localStorage.getItem(RECENT_SEARCHES_KEY)).toBeNull()
+
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(apiGet).toHaveBeenLastCalledWith("/search", {
+        params: { q: "chemistry", type: "all", limit: 8 },
+      })
+      const result = screen.getByRole("button", { name: "Chemistry workshop" })
+      if (interaction === "pointer") {
+        fireEvent.click(result)
+      } else {
+        press(input, "ArrowDown")
+        expect(press(input, "Enter").defaultPrevented).toBe(true)
+      }
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(router.state.location.pathname).toBe("/news/303")
+      expect(JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "[]")).toEqual(["chemistry"])
+    }
+  )
 
   it("starts a recent search without restoring the selection from before Clear", async () => {
     localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(["physics"]))
