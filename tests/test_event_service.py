@@ -803,9 +803,11 @@ async def test_create_event_swallows_creator_sync_failure(
 
     # The event is committed, so the request must still succeed.
     assert result == mock_event
-    warning.assert_called_once()
-    assert warning.call_args.args[0] == "event_creator_relationship_sync_failed"
-    assert warning.call_args.kwargs["event_id"] == str(mock_event.id)
+    warning.assert_called_once_with(
+        "event_creator_relationship_sync_failed",
+        operation="touch",
+        error_type="RelationshipWriteError",
+    )
 
 
 @pytest.mark.asyncio

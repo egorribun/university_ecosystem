@@ -197,7 +197,12 @@ async def test_empty_write_sends_nothing():
 
 
 @pytest.mark.asyncio
-async def test_sync_event_attendee_is_best_effort_and_logs_warning():
+@pytest.mark.parametrize(
+    ("attending", "operation"), [(True, "touch"), (False, "delete")]
+)
+async def test_sync_event_attendee_is_best_effort_and_logs_warning(
+    attending: bool, operation: str
+) -> None:
     write = AsyncMock(side_effect=RelationshipWriteError("down"))
     channel = MagicMock()
     with (
@@ -212,10 +217,13 @@ async def test_sync_event_attendee_is_best_effort_and_logs_warning():
         patch.object(relationships.logger, "warning") as warning,
     ):
         # Must not raise: the attendance commit has already succeeded.
-        await sync_event_attendee(uuid4(), uuid4(), attending=True)
+        await sync_event_attendee(uuid4(), uuid4(), attending=attending)
 
-    warning.assert_called_once()
-    assert warning.call_args.args[0] == "event_attendee_relationship_sync_failed"
+    warning.assert_called_once_with(
+        "event_attendee_relationship_sync_failed",
+        operation=operation,
+        error_type="RelationshipWriteError",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -255,9 +263,11 @@ async def test_sync_event_creator_is_best_effort_and_logs_warning(
         # Must not raise: the event commit has already succeeded.
         await sync_event_creator(event_id, uuid4())
 
-    warning.assert_called_once()
-    assert warning.call_args.args[0] == "event_creator_relationship_sync_failed"
-    assert warning.call_args.kwargs["event_id"] == str(event_id)
+    warning.assert_called_once_with(
+        "event_creator_relationship_sync_failed",
+        operation="touch",
+        error_type="RelationshipWriteError",
+    )
 
 
 # ---------------------------------------------------------------------------

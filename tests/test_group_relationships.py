@@ -184,15 +184,15 @@ async def test_sync_group_participant_is_best_effort_and_logs_warning(
     mock_spicedb_relationship_writes.WriteRelationships.side_effect = (
         RelationshipWriteError("down")
     )
-    user_id, new_group = uuid4(), uuid4()
     with patch.object(relationships.logger, "warning") as warning:
         # Must not raise: the user commit has already succeeded.
-        await sync_group_participant(user_id, None, new_group)
+        await sync_group_participant(uuid4(), uuid4(), uuid4())
 
-    warning.assert_called_once()
-    assert warning.call_args.args[0] == "group_participant_relationship_sync_failed"
-    assert warning.call_args.kwargs["user_id"] == str(user_id)
-    assert warning.call_args.kwargs["new_group_id"] == str(new_group)
+    warning.assert_called_once_with(
+        "group_participant_relationship_sync_failed",
+        update_count=2,
+        error_type="RelationshipWriteError",
+    )
 
 
 # ---------------------------------------------------------------------------
