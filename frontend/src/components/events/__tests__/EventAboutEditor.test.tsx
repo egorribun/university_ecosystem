@@ -315,6 +315,39 @@ describe("EventAboutEditor", () => {
     expect(onUpdate).toHaveBeenCalledOnce()
   })
 
+  it("does not take focus back from another control after the save refresh", async () => {
+    const user = userEvent.setup()
+    mockPatch.mockResolvedValue({ status: 200 })
+    let finishRefresh: (() => void) | undefined
+    const refresh = new Promise<void>((resolve) => {
+      finishRefresh = resolve
+    })
+    const onUpdate = vi.fn(() => refresh)
+    render(
+      <>
+        <EventAboutEditor {...baseProps} onUpdate={onUpdate} />
+        <button type="button">Other action</button>
+      </>
+    )
+
+    await user.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Updated workshop details" } })
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    expect(onUpdate).toHaveBeenCalledOnce()
+
+    const other = screen.getByRole("button", { name: "Other action" })
+    await user.click(other)
+    expect(other).toHaveFocus()
+    await act(async () => {
+      finishRefresh?.()
+      await refresh
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(other).toHaveFocus()
+  })
+
   it("skips focus restoration when the editor unmounts before the timer runs", async () => {
     vi.useFakeTimers()
     try {
