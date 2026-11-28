@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SearchDialog } from "@/components/search/SearchDialog"
@@ -38,11 +39,11 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/api/client", () => ({ default: { get: vi.fn() } }))
 
-function renderDialog() {
+function renderDialog(subscribeOpenRequest?: (listener: () => void) => () => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <SearchDialog />
+      <SearchDialog subscribeOpenRequest={subscribeOpenRequest} />
     </QueryClientProvider>
   )
 }
@@ -70,6 +71,41 @@ describe("SearchDialog focus containment", () => {
       escapeDeactivates: true,
       returnFocusOnDeactivate: true,
     })
+  })
+
+  it("returns focus to the query after keyboard activation of Clear", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true })
+
+    const input = screen.getByRole("textbox", { name: "common:search.inputLabel" })
+    await waitFor(() => expect(input).toHaveFocus())
+    await user.keyboard("x")
+    await user.tab()
+    expect(screen.getByRole("button", { name: "common:search.clear" })).toHaveFocus()
+    await user.keyboard("{Enter}")
+
+    expect(screen.queryByRole("button", { name: "common:search.clear" })).not.toBeInTheDocument()
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(input).toHaveValue("")
+    expect(input).toHaveFocus()
+    await user.keyboard("y")
+    expect(input).toHaveValue("y")
+  })
+
+  it("focuses the input when the external opener requests the dialog", async () => {
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn<NonNullable<Parameters<typeof renderDialog>[0]>>(() => unsubscribe)
+    const view = renderDialog(subscribe)
+    const [requestOpen] = subscribe.mock.calls[0]!
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+    act(requestOpen)
+
+    const input = screen.getByRole("textbox", { name: "common:search.inputLabel" })
+    await waitFor(() => expect(input).toHaveFocus())
+    view.unmount()
+    expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
   it("releases the trap when the dialog closes", () => {
