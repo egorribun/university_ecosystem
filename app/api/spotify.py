@@ -347,16 +347,11 @@ async def _ensure_access_token(
     if old_scope_str:
         old_scope_set = set(old_scope_str.split())
         new_scope_set = set(new_scope_str.split())
-        missing_scopes = old_scope_set - new_scope_set
-        if missing_scopes:
+        missing_scope_count = len(old_scope_set - new_scope_set)
+        if missing_scope_count:
             logger.warning(
                 "Spotify token refresh returned downgraded scope — disconnecting integration",
-                extra={
-                    "user_id": str(user.id),
-                    "missing_scopes": sorted(missing_scopes),
-                    "old_scope": old_scope_str,
-                    "new_scope": new_scope_str,
-                },
+                missing_scope_count=missing_scope_count,
             )
             _disconnect_user(user, clear_refresh=True)
             await db.commit()
