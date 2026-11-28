@@ -609,16 +609,21 @@ class EventService:
                         event_id=event_id,
                         db_session=self.uow.session,
                     )
-            except (OSError, SQLAlchemyError):
+            except (OSError, SQLAlchemyError) as exc:
                 # RZ-20-04: Retain the object if post-commit cleanup cannot proceed.
-                logger.warning("Failed to safely clean event image: %s", image_url)
+                logger.warning(
+                    "Failed to safely clean event image",
+                    exception_type=type(exc).__name__,
+                )
 
         for url in file_urls:
             try:
                 await delete_static_file(url)
-            except (FileNotFoundError, OSError):
+            except (FileNotFoundError, OSError) as exc:
                 # RZ-20-04: Narrowed — file deletion is best-effort.
-                logger.warning("Failed to delete event file: %s", url)
+                logger.warning(
+                    "Failed to delete event file", exception_type=type(exc).__name__
+                )
 
         return True
 
