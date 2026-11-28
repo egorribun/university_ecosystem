@@ -556,7 +556,9 @@ async def test_generate_schedule_reminders_skips_inactive_users(
 
 
 @pytest.mark.asyncio
-async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
+async def test_scheduler_loop_logs_failures(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     from app.workers import notifications as worker_module
 
     class _DummySession:
@@ -566,8 +568,10 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
+    account_id = "4d36db70-b8c3-4fa6-8b58-94fa41dd38c1"
+
     async def _failing_generate(*_args, **_kwargs):
-        raise RuntimeError("boom")
+        raise RuntimeError(f"Could not read schedule for {account_id}")
 
     async def _cancel_sleep(_seconds: float):
         raise asyncio.CancelledError()
@@ -596,18 +600,20 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
     )
 
     with pytest.raises(asyncio.CancelledError):
-        # We patch the logger instance on the module to verify call arguments directly
-        with unittest.mock.patch.object(worker_module.logger, "error") as mock_error:
-            await scheduler.run_forever()
+        await scheduler.run_forever()
 
     assert metrics.failures == 1
 
-    mock_error.assert_called_once()
-    args, kwargs = mock_error.call_args
-    assert "Failed to generate schedule reminders" in args[0]
-    extra = kwargs.get("extra", {})
-    assert extra.get("attempt") == 1
-    assert extra.get("backoff_seconds") == 6
+    (failure,) = [
+        record.getMessage()
+        for record in caplog.records
+        if "Failed to generate schedule reminders" in record.getMessage()
+    ]
+    assert account_id not in failure
+    assert "Could not read schedule" not in failure
+    assert "'error_type': 'RuntimeError'" in failure
+    assert "'attempt': 1" in failure
+    assert "'backoff_seconds': 6" in failure
 
 
 @pytest.mark.asyncio

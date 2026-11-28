@@ -68,7 +68,7 @@ class NotificationsScheduler:
                     created = await self.run_once()
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — top-level worker loop must not crash on any error (reviewed TD-27-04)
+                except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — top-level worker loop must not crash on any error (reviewed TD-27-04)
                     consecutive_failures += 1
                     backoff_seconds = min(
                         self.poll_seconds * (2 ** min(consecutive_failures, 5)),
@@ -79,8 +79,8 @@ class NotificationsScheduler:
                         self.metrics.record_failure()
                     logger.error(
                         "Failed to generate schedule reminders",
-                        exc_info=True,
                         extra={
+                            "error_type": type(exc).__name__,
                             "attempt": consecutive_failures,
                             "backoff_seconds": backoff_seconds,
                         },
