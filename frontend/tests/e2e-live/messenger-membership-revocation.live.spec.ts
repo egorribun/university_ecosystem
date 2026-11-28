@@ -127,13 +127,13 @@ async function expectSocketMessage(
   groupId: string,
   content: string
 ): Promise<void> {
-  // Delivery runs through the outbox after commit; on a loaded runner it can
-  // exceed the default 15-second poll, so allow a bounded 30 seconds.
+  // Delivery runs through the outbox after commit; on a loaded hosted runner it
+  // exceeded 30 seconds, so allow a bounded 60 (owner decision, 2026-11-28).
   await expect
     .poll(
       () =>
         socket.newMessages.some((event) => event.chatId === groupId && event.content === content),
-      { timeout: 30_000 }
+      { timeout: 60_000 }
     )
     .toBe(true)
 }
