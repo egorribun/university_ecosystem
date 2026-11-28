@@ -1140,7 +1140,7 @@ export const ChatWindow = memo(function ChatWindow({
           onClick={() =>
             virtualizer.scrollToIndex(filteredMessages.length - 1, {
               align: "end",
-              behavior: "smooth",
+              behavior: prefersReducedMotion ? "instant" : "smooth",
             })
           }
           aria-label={t("messenger:aria.jumpToLatest")}
