@@ -96,7 +96,7 @@ const NewsCardContent = ({
             type="button"
             onClick={handleLike}
             className={cn(
-              "flex items-center gap-1.5 transition-[color,transform] duration-fast active:scale-90",
+              "flex min-h-11 min-w-11 items-center justify-center gap-1.5 transition-[color,transform] duration-fast active:scale-90",
               isLiked
                 ? "text-error-text"
                 : "text-(--text-secondary) hover:text-error-text/[calc(var(--opacity-hover)*100%)]"
@@ -136,7 +136,7 @@ const NewsCardContent = ({
                 onToggleBookmark()
               }}
               className={cn(
-                "flex items-center transition-[color,transform] duration-fast active:scale-90",
+                "flex min-h-11 min-w-11 items-center justify-center transition-[color,transform] duration-fast active:scale-90",
                 isBookmarked
                   ? "text-brand"
                   : "text-(--text-secondary) hover:text-brand/[calc(var(--opacity-hover)*100%)]"
