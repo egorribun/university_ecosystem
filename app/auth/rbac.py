@@ -298,12 +298,10 @@ class PermissionChecker:
             raise SpiceDBUnavailableError("grpc is not installed") from exc
         except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — SpiceDB fallback to grace-period cache (reviewed TD-27-04)
             logger.error(
-                "SpiceDB async permission check failed (%s:%s#%s for %s): %s",
-                resource_type,
-                resource_id,
-                permission,
-                user_id,
-                exc,
+                "SpiceDB async permission check failed",
+                resource_type=resource_type,
+                permission=permission,
+                error_type=type(exc).__name__,
             )
             # TD-W5-08: Grace-period fallback — serve stale cached result when
             # SpiceDB is temporarily unreachable instead of failing the request.
@@ -326,14 +324,11 @@ class PermissionChecker:
                 allow_stale = permission != "admin" or cached_result is False
                 if allow_stale and age <= max_ttl:
                     logger.warning(
-                        "SpiceDB unavailable — serving cached permission result "
-                        "(%s:%s#%s for %s, age=%.1fs, result=%s)",
-                        resource_type,
-                        resource_id,
-                        permission,
-                        user_id,
-                        age,
-                        cached_result,
+                        "SpiceDB unavailable — serving cached permission result",
+                        resource_type=resource_type,
+                        permission=permission,
+                        cache_age_seconds=age,
+                        allowed=cached_result,
                     )
                     _PERM_CACHE_STALE.inc()  # PERF-14-02: grace-period stale hit
                     return cached_result
