@@ -179,7 +179,7 @@ async def get_transformed_image(
                 return data, mime
     except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
-        logger.warning("Redis cache read failed for %s: %s", path, exc)
+        logger.warning("Redis cache read failed (%s)", type(exc).__name__)
     needs_transform = format_preference != "original" or width is not None
     runtime = _image_transform_runtime
     if needs_transform:
@@ -193,7 +193,7 @@ async def get_transformed_image(
             source_bytes = await _fetch_source_bytes(backend, path)
         except (FileNotFoundError, OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — storage backend I/O errors.
-            logger.error("Failed to fetch source image %s: %s", path, exc)
+            logger.error("Failed to fetch source image (%s)", type(exc).__name__)
             raise ValueError(f"Could not load image: {path}") from exc
 
         if not needs_transform:
@@ -236,7 +236,7 @@ async def get_transformed_image(
             await redis_client.set(redis_key, payload, ex=_CACHE_TTL)
         except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
             # RZ-20-04: Narrowed — Redis write failure is non-fatal.
-            logger.warning("Redis cache write failed for %s: %s", path, exc)
+            logger.warning("Redis cache write failed (%s)", type(exc).__name__)
 
         return transformed_data, mime
 
@@ -244,7 +244,7 @@ async def get_transformed_image(
         raise
     except (OSError, ValueError) as exc:
         # RZ-20-04: Narrowed — PIL/image transformation errors.
-        logger.error("Failed to transform image %s: %s", path, exc)
+        logger.error("Failed to transform image (%s)", type(exc).__name__)
         return source_bytes, _guess_mime(path)
 
 
