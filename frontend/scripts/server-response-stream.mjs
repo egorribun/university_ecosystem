@@ -1,5 +1,11 @@
 import { Readable } from "node:stream"
 
+export function serverErrorType(error) {
+  // Do not read the thrown value's properties or let the logger inspect it.
+  if (!Error.isError(error)) return "NonError"
+  return Object.getPrototypeOf(error) === TypeError.prototype ? "TypeError" : "Error"
+}
+
 export async function pipeResponseBody(webResponse, destination, logger = console) {
   if (!webResponse.body) {
     destination.end()
@@ -23,7 +29,7 @@ export async function pipeResponseBody(webResponse, destination, logger = consol
       resolve()
     }
     const onSourceError = (error) => {
-      logger.error("server-prod: response stream error:", error)
+      logger.error("server-prod: response stream error:", serverErrorType(error))
       // A source failure means the SSR body is truncated. Ending the response
       // would turn a partial document into an apparently successful HTTP 200;
       // abort the transport so clients and edge proxies observe the failure.
@@ -33,7 +39,7 @@ export async function pipeResponseBody(webResponse, destination, logger = consol
       settle()
     }
     const onDestinationError = (error) => {
-      logger.error("server-prod: destination stream error:", error)
+      logger.error("server-prod: destination stream error:", serverErrorType(error))
       // The destination error is already observed and logged. Destroy the
       // source without forwarding that same error, otherwise Node can emit a
       // second asynchronous source error after listeners have been cleaned up.
