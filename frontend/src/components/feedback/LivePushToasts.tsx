@@ -5,6 +5,7 @@ import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   getCurrentPushIdentitySnapshot,
   getCurrentPushUserId,
@@ -367,6 +368,7 @@ export function createToastEnqueueCallback(
 
 export default function LivePushToasts() {
   const { t } = useTranslation(Array.of("notifications", "common"))
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const identitySnapshot = useSyncExternalStore(
     subscribeToPushIdentity,
     getCurrentPushIdentitySnapshot,
@@ -564,10 +566,10 @@ export default function LivePushToasts() {
             // filter/backdrop blur can crash WebKit while the action button is
             // becoming interactive, and spring settling is unnecessarily
             // nondeterministic for a transient notification.
-            initial={{ opacity: 0, y: -20 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: "easeOut" }}
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -620,16 +622,17 @@ export default function LivePushToasts() {
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />
             </m.button>
 
-            {/* Progress Bar — gradient style */}
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/[calc(var(--opacity-faint)*100%)]">
-              <m.div
-                className={cn("absolute bottom-0 left-0 h-0.5 opacity-heavy", severityIconColor)}
-                style={{ background: "linear-gradient(to right, currentColor, transparent)" }}
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={getToastProgressTransition()}
-              />
-            </div>
+            {!prefersReducedMotion && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/[calc(var(--opacity-faint)*100%)]">
+                <m.div
+                  className={cn("absolute bottom-0 left-0 h-0.5 opacity-heavy", severityIconColor)}
+                  style={{ background: "linear-gradient(to right, currentColor, transparent)" }}
+                  initial={{ width: "100%" }}
+                  animate={{ width: "0%" }}
+                  transition={getToastProgressTransition()}
+                />
+              </div>
+            )}
           </m.div>
         )}
       </AnimatePresence>
