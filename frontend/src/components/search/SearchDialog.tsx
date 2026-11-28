@@ -263,6 +263,7 @@ export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
                 onClick={() => {
                   setQuery("")
                   setActiveIndex(-1)
+                  inputRef.current?.focus()
                 }}
                 className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-(--bg-surface-hover) transition-colors"
                 aria-label={t("common:search.clear")}
