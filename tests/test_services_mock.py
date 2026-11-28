@@ -214,7 +214,7 @@ async def test_deliver_push_handles_exception_result() -> None:
     assert results[0].user_id == uuid.UUID(int=0)
     assert results[0].endpoint == "unknown"
     assert results[0].status == "error"
-    assert results[0].error == "push failed"
+    assert results[0].error == "push delivery failed"
     deliver.assert_awaited_once()
 
 
