@@ -1,6 +1,6 @@
 import { expectInlineStyle } from "@/tests/helpers/expectInlineStyle"
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -100,10 +100,10 @@ describe("ForwardModal contracts", () => {
       animate: { scale: 1, opacity: 1, y: 0 },
       exit: { scale: 0.95, opacity: 0, y: 20 },
     })
-    const option = mocks.motion.mock.calls.find(
-      ([tag, props]) => tag === "button" && props.role === "option"
+    const destination = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.type === "button"
     )
-    expect(option?.[1]).toMatchObject({
+    expect(destination?.[1]).toMatchObject({
       whileHover: { x: 4, backgroundColor: "var(--bg-surface-hover)" },
       whileTap: { scale: 0.98 },
     })
@@ -114,18 +114,18 @@ describe("ForwardModal contracts", () => {
     const { rerender } = render(
       <ForwardModal open onClose={() => {}} contacts={contacts} onSelect={() => {}} />
     )
-    let option = mocks.motion.mock.calls.find(
-      ([tag, props]) => tag === "button" && props.role === "option"
+    let destination = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.type === "button"
     )
-    expect(option?.[1]).toMatchObject({ whileHover: undefined, whileTap: undefined })
+    expect(destination?.[1]).toMatchObject({ whileHover: undefined, whileTap: undefined })
     mocks.motion.mockClear()
     rerender(
       <ForwardModal open onClose={() => {}} contacts={contacts} onSelect={() => {}} isForwarding />
     )
-    option = mocks.motion.mock.calls.find(
-      ([tag, props]) => tag === "button" && props.role === "option"
+    destination = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.type === "button"
     )
-    expect(option?.[1]).toMatchObject({
+    expect(destination?.[1]).toMatchObject({
       whileHover: undefined,
       whileTap: undefined,
       disabled: true,
@@ -191,13 +191,15 @@ describe("ForwardModal contracts", () => {
       />
     )
 
-    const options = screen.getAllByRole("option")
-    expect(options).toHaveLength(2)
-    expect(options[0]).toHaveTextContent("messenger:forwardCurrentChat")
-    expect(options[0]).not.toHaveTextContent("A recent message")
-    expect(options[1]).toHaveTextContent("A recent message")
+    const destinations = within(
+      screen.getByRole("group", { name: "messenger:forwardTo" })
+    ).getAllByRole("button")
+    expect(destinations).toHaveLength(2)
+    expect(destinations[0]).toHaveTextContent("messenger:forwardCurrentChat")
+    expect(destinations[0]).not.toHaveTextContent("A recent message")
+    expect(destinations[1]).toHaveTextContent("A recent message")
 
-    fireEvent.click(options[1]!)
+    fireEvent.click(destinations[1]!)
     expect(onSelect).toHaveBeenCalledOnce()
     expect(onSelect).toHaveBeenCalledWith("chat-other")
   })
@@ -209,11 +211,11 @@ describe("ForwardModal contracts", () => {
       <ForwardModal open onClose={onClose} contacts={contacts} onSelect={onSelect} isForwarding />
     )
 
-    const listbox = screen.getByRole("listbox", { name: "messenger:forwardTo" })
-    expect(listbox).toHaveAttribute("aria-busy", "true")
-    const option = screen.getByRole("option")
-    expect(option).toBeDisabled()
-    fireEvent.click(option)
+    const group = screen.getByRole("group", { name: "messenger:forwardTo" })
+    expect(group).toHaveAttribute("aria-busy", "true")
+    const destination = within(group).getByRole("button")
+    expect(destination).toBeDisabled()
+    fireEvent.click(destination)
     expect(onSelect).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole("dialog"))
