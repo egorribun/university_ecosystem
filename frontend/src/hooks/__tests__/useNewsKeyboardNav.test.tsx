@@ -62,6 +62,55 @@ describe("useNewsKeyboardNav", () => {
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" })
   })
 
+  it("honors reduced motion for J and K and updates when the preference changes", () => {
+    const query = "(prefers-reduced-motion: reduce)"
+    const media = Object.assign(new EventTarget(), {
+      media: query,
+      matches: true,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    })
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue(media)
+
+    try {
+      const { result } = renderHook(() => useNewsKeyboardNav(ITEMS))
+      const first = document.createElement("div")
+      const second = document.createElement("div")
+      first.scrollIntoView = vi.fn()
+      second.scrollIntoView = vi.fn()
+      act(() => {
+        result.current.registerRef(0, first)
+        result.current.registerRef(1, second)
+      })
+
+      dispatchKey("j")
+      dispatchKey("j")
+      expect(second.scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: "instant",
+        block: "center",
+      })
+      dispatchKey("k")
+      expect(first.scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: "instant",
+        block: "center",
+      })
+
+      act(() => {
+        media.matches = false
+        media.dispatchEvent(Object.assign(new Event("change"), { matches: false }))
+      })
+      dispatchKey("j")
+      expect(second.scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: "smooth",
+        block: "center",
+      })
+      expect(matchMedia).toHaveBeenCalledWith(query)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("registerRef(null) removes the element; scrollToCard then no-ops (lines 21-28)", () => {
     const { result } = renderHook(() => useNewsKeyboardNav(ITEMS))
 
