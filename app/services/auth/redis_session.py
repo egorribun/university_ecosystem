@@ -76,10 +76,11 @@ class RedisSessionService:
                 "Awaitable[Any]", client.hset(key, mapping=cast("dict[Any, Any]", data))
             )
             await cast("Awaitable[Any]", client.expire(key, self.ttl_seconds))
-        except (RedisError, OSError) as e:
+        except (RedisError, OSError) as exc:
             logger.warning(
-                "Failed to cache session %s in Redis: %s", jti, e
-            )  # LOW-W19: lazy logging
+                "Failed to cache session metadata in Redis",
+                error_type=type(exc).__name__,
+            )
 
     async def get_session(self, jti: str) -> RedisSessionData | None:
         """Retrieve session data from Redis.
@@ -156,10 +157,11 @@ class RedisSessionService:
         try:
             client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
             await cast("Awaitable[Any]", client.delete(f"{self.KEY_PREFIX}{jti}"))
-        except (RedisError, OSError):
+        except (RedisError, OSError) as exc:
             # Cache state is optional; every auth transport checks the DB epoch.
             logger.warning(
-                "Failed to invalidate cached session metadata", exc_info=True
+                "Failed to invalidate cached session metadata",
+                error_type=type(exc).__name__,
             )
 
     async def revoke_session(
@@ -186,13 +188,14 @@ class RedisSessionService:
                     "Awaitable[Any]",
                     revocation_client.publish("session:revocations", jti),
                 )
-            except (RedisError, OSError):
-                logger.warning("Failed to publish session revocation for jti=%s", jti)
-        except (RedisError, OSError) as e:
+            except (RedisError, OSError) as exc:
+                logger.warning(
+                    "Failed to publish session revocation",
+                    error_type=type(exc).__name__,
+                )
+        except (RedisError, OSError) as exc:
             logger.error(
-                "Failed to revoke session %s in Redis: %s — refusing to "
-                "report a successful revocation",
-                jti,
-                e,
+                "Failed to revoke session in Redis",
+                error_type=type(exc).__name__,
             )
             raise
