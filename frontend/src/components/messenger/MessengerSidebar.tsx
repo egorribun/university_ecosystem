@@ -4,7 +4,7 @@ import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { m } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
-import { Dispatch, SetStateAction, useMemo, useState } from "react"
+import { Dispatch, SetStateAction, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
@@ -61,6 +61,7 @@ export function MessengerSidebar({
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
   // Wave 181 SW3 — useReducedMotion guards new-chat button micro-interactions
   // + sidebar slide-in/out transitions (Framer Motion already provides motion
   // reduction at MotionConfig level via W127 hoist, but framer-motion docs
@@ -93,7 +94,10 @@ export function MessengerSidebar({
   }, [contacts, isSearchActive, normalisedSearch])
 
   const handleStartNewChat = () => setIsNewChatModalOpen(true)
-  const handleClearSearch = () => setSearchQuery("")
+  const handleClearSearch = () => {
+    setSearchQuery("")
+    searchInputRef.current?.focus()
+  }
 
   return (
     <m.div
@@ -132,6 +136,7 @@ export function MessengerSidebar({
       <div className="px-5 pb-4">
         <TextField
           id="messenger-sidebar-search"
+          ref={searchInputRef}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           inputClassName="matte-input border-none py-2.5 outline-none transition-all"
