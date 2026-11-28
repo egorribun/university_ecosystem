@@ -65,8 +65,15 @@ export function useScheduleKeyboardNav({
       if (!enabled || rowCount === 0 || colCount === 0) return
       if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
 
-      // Skip if user is typing in an input/textarea
+      // Other dialogs (including the notification center) own their keystrokes.
       const target = e.target as HTMLElement
+      if (
+        target instanceof Element &&
+        target.closest("dialog, [role='dialog'], [role='alertdialog']")
+      ) {
+        return
+      }
+      // Do not consume keys from form controls.
       if (
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
