@@ -32,6 +32,8 @@ export function useNewsKeyboardNav(items: NewsItem[]) {
     if (items.length === 0) return
 
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+
       // Skip if focused in input, textarea, dialog, or contenteditable
       const tag = (e.target as HTMLElement).tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
