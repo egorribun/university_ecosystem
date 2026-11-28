@@ -136,5 +136,5 @@ async def issue_ws_upgrade_ticket(
             detail={"error": "ws_ticket_service_unavailable"},
         ) from None
 
-    logger.debug("Issued WS upgrade ticket for user_id=%s jti=%.8s", user_id, jti)
+    logger.debug("Issued WS upgrade ticket for user_id=%s", user_id)
     return WsTicketResponse(ticket=ticket, expires_in=ttl)
