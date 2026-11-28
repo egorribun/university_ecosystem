@@ -398,7 +398,9 @@ def _serialize_notification(
         return NotificationOut.model_validate(data)
     except ValidationError as exc:
         logger.warning(
-            "Failed to validate notification payload for id=%s: %s", identifier, exc
+            "Failed to validate notification payload",
+            error_type=type(exc).__name__,
+            error_count=exc.error_count(),
         )
         return NotificationOut.model_construct(**data)
 
