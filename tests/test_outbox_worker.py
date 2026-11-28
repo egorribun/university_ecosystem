@@ -608,7 +608,7 @@ async def test_outbox_worker_unknown_event_type(db_session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
+async def test_outbox_worker_dispatch_exception(db_session, monkeypatch, caplog):
     worker = OutboxWorker()
     event_id = uuid.uuid4()
     se = StoredEvent(
@@ -622,8 +622,10 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
     db_session.add(se)
     await db_session.flush()
 
+    account_id = uuid.uuid4()
+
     async def mock_publish_fail(*args, **kwargs):
-        raise ValueError("Publish failed")
+        raise ValueError(f"Publish failed for {account_id}")
 
     monkeypatch.setattr("app.core.events.event_bus.publish", mock_publish_fail)
 
@@ -636,6 +638,24 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
         result = await db.get(StoredEvent, event_id)
         assert result.error_count == 1
         assert "Publish failed" in result.last_error
+
+    (reconstruction,) = [
+        record.getMessage()
+        for record in caplog.records
+        if "Failed to reconstruct event" in record.getMessage()
+    ]
+    (retry,) = [
+        record.getMessage()
+        for record in caplog.records
+        if "Failed to process outbox event" in record.getMessage()
+    ]
+    for diagnostic in (reconstruction, retry):
+        assert str(event_id) not in diagnostic
+        assert str(account_id) not in diagnostic
+        assert "Publish failed" not in diagnostic
+        assert "'error_type': 'ValueError'" in diagnostic
+        assert "'event_type': 'UserCreated'" in diagnostic
+    assert "'error_count': 1" in retry
 
 
 @pytest.mark.asyncio

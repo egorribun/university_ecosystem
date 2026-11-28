@@ -500,9 +500,8 @@ class OutboxWorker:
                             _OUTBOX_BATCH_RETRY_PENDING.set(True)
                             logger.error(
                                 "Failed to process outbox event",
-                                exc_info=True,
                                 extra={
-                                    "event_id": str(se.id),
+                                    "error_type": type(exc).__name__,
                                     "event_type": se.event_type,
                                     "error_count": se.error_count,
                                 },
@@ -672,7 +671,11 @@ class OutboxWorker:
         except DurableEventDeferred:
             raise
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
-            logger.error("Failed to reconstruct event %s: %s", se.id, e)
+            logger.error(
+                "Failed to reconstruct event",
+                event_type=se.event_type,
+                error_type=type(e).__name__,
+            )
             raise
         finally:
             bypass_rls_ctx.reset(bypass_token)
