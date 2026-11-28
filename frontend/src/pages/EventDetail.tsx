@@ -127,8 +127,9 @@ export default function EventDetail() {
   }
 
   const handleShare = useCallback(async () => {
+    const hasNativeShare = typeof navigator.share === "function"
     try {
-      if (navigator.share) {
+      if (hasNativeShare) {
         await navigator.share({
           title: event?.title ?? "",
           url: window.location.href,
@@ -137,8 +138,9 @@ export default function EventDetail() {
         await navigator.clipboard.writeText(window.location.href)
         setSnackbar(t("events:detail.messages.linkCopied"))
       }
-    } catch {
-      // User cancelled share or clipboard failed — silent
+    } catch (error) {
+      if (hasNativeShare && error instanceof DOMException && error.name === "AbortError") return
+      setSnackbar(t("events:detail.messages.shareFailed"))
     }
   }, [event?.title, t])
 

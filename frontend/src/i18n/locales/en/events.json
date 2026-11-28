@@ -155,6 +155,7 @@
       "aboutUpdated": "Description updated",
       "aboutUpdateFailed": "Couldn't update the description",
       "linkCopied": "Link copied",
+      "shareFailed": "Could not share the event. You can copy the link from the address bar.",
       "deleted": "Event deleted",
       "deleteFailed": "Couldn't delete the event"
     },

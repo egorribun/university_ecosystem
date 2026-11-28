@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import EventDetail from "../EventDetail"
 
 const event = {
@@ -460,26 +460,44 @@ describe("EventDetail", () => {
       })
     )
 
-    share.mockRejectedValueOnce(new Error("cancelled"))
-    fireEvent.click(screen.getByRole("button", { name: "share" }))
-    await waitFor(() => expect(share).toHaveBeenCalledTimes(2))
+    share.mockRejectedValueOnce(new DOMException("cancelled", "AbortError"))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "share" }))
+    })
+    expect(share).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
-  it("copies the link when native share is unavailable and handles clipboard failure", async () => {
+  it("reports an unexpected native share failure", async () => {
+    const share = vi.fn().mockRejectedValue(new DOMException("target failed", "DataError"))
+    vi.stubGlobal("navigator", { share })
+    render(<EventDetail />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "share" }))
+    })
+
+    expect(screen.getByRole("status")).toHaveTextContent("events:detail.messages.shareFailed")
+  })
+
+  it("copies the link when native share is unavailable and reports clipboard failure", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal("navigator", { clipboard: { writeText } })
     render(<EventDetail />)
 
-    fireEvent.click(screen.getByRole("button", { name: "share" }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "share" }))
+    })
+    expect(writeText).toHaveBeenCalledWith(window.location.href)
     expect(screen.getByRole("status")).toHaveTextContent("events:detail.messages.linkCopied")
     fireEvent.click(screen.getByRole("button", { name: "close snackbar" }))
 
-    writeText.mockRejectedValueOnce(new Error("clipboard unavailable"))
-    fireEvent.click(screen.getByRole("button", { name: "share" }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2))
-    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    writeText.mockRejectedValueOnce(new DOMException("clipboard denied", "NotAllowedError"))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "share" }))
+    })
+    expect(writeText).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("status")).toHaveTextContent("events:detail.messages.shareFailed")
   })
 
   it("handles failed deletion and cancellation without navigating", async () => {
