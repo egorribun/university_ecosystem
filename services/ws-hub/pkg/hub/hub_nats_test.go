@@ -28,6 +28,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -768,18 +769,27 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 }
 
 func TestHandleCacheInvalidation_BadSignatureDropped(t *testing.T) {
+	const userID = "abcdefab-cdef-4abc-8def-abcdefabcdef"
+	const roomID = "fedcbafe-dcba-4fed-afed-fedcbafedcba"
+	var logs strings.Builder
 	auth := &recordingAuthClient{}
 	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
+	h.Logger = logging.NewJSONLogger(&logs, nil)
 	handler := h.handleCacheInvalidation(context.Background())
 
 	payload := signedInvalidationPayload(t, "WRONG-secret", invalidationData{
-		RoomID:    "22222222-2222-2222-2222-222222222222",
+		RoomID:    roomID,
 		Timestamp: 1234,
-		UserID:    "11111111-1111-1111-1111-111111111111",
+		UserID:    userID,
 	})
 	handler(&nats.Msg{Subject: "cache.invalidate", Data: payload})
 
 	assert.Empty(t, auth.calls())
+	assert.Contains(t, logs.String(), "Invalid internal NATS signature")
+	assert.NotContains(t, logs.String(), `"room_id"`)
+	assert.NotContains(t, logs.String(), `"user_id"`)
+	assert.NotContains(t, logs.String(), roomID)
+	assert.NotContains(t, logs.String(), userID)
 }
 
 func TestHandleCacheInvalidation_MalformedAndBadHexDropped(t *testing.T) {
