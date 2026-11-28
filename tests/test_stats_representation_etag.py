@@ -202,4 +202,6 @@ def test_stats_vary_keeps_existing_dimensions():
     assert {part.strip().lower() for part in response.headers["vary"].split(",")} == {
         "origin",
         "accept-language",
+        "cookie",
+        "authorization",
     }

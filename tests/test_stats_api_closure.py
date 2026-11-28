@@ -110,7 +110,11 @@ def test_set_headers_and_period_resolution(monkeypatch):
     monkeypatch.setattr(stats, "format_etag", lambda value: f"formatted:{value}")
     response = Response()
     stats._set_stats_headers(response, locale="ru", etag="abc")
-    assert response.headers["Vary"] == "Accept-Language"
+    assert {part.strip().lower() for part in response.headers["Vary"].split(",")} == {
+        "accept-language",
+        "cookie",
+        "authorization",
+    }
     assert response.headers["Content-Language"] == "ru"
     assert response.headers["Cache-Control"] == "private, max-age=42"
     assert response.headers["ETag"] == "formatted:abc"
@@ -162,6 +166,7 @@ async def test_handle_stats_query_valid_invalid_and_not_modified(monkeypatch):
     )
     assert isinstance(not_modified, Response)
     assert not_modified.status_code == status.HTTP_304_NOT_MODIFIED
+    assert not_modified.headers["Vary"] == response.headers["Vary"]
     assert handler.queries[1].kind == "attendance"
     assert handler.queries[1].period_days == 30
 
