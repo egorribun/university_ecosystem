@@ -1,5 +1,6 @@
 import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
+import * as v from "valibot"
 import { logWarning } from "@/app/logger"
 
 // ETag strings may survive reloads, but automatic conditional requests require
@@ -113,6 +114,11 @@ const timingSafeEqual = (a: string, b: string): boolean => {
 //   primary store, and debounces the persistence flush to 500ms. Eviction is
 //   LRU by lastUsed timestamp instead of FIFO by Map insertion order.
 
+const persistedEtagRowSchema = v.tuple([
+  v.string(),
+  v.object({ tag: v.string(), lastUsed: v.pipe(v.number(), v.finite()) }),
+])
+
 let _etagMap: Map<string, EtagEntry> | null = null // null = not yet hydrated
 let _flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -125,8 +131,12 @@ function getEtagMap(): Map<string, EtagEntry> {
   try {
     const raw = localStorage.getItem(ETAG_CACHE_KEY)
     if (raw) {
-      const entries = JSON.parse(raw) as [string, EtagEntry][]
-      _etagMap = new Map(entries)
+      const entries: unknown = JSON.parse(raw)
+      if (!Array.isArray(entries)) throw new TypeError("Expected an array of cached ETag rows")
+      for (const entry of entries) {
+        const parsed = v.safeParse(persistedEtagRowSchema, entry)
+        if (parsed.success) _etagMap.set(...parsed.output)
+      }
     }
   } catch (_err) {
     logWarning("Failed to hydrate etag cache", _err)

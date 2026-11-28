@@ -1180,6 +1180,44 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
     expect(mod.etagCache.get("seeded:key")).toBe('"seeded-tag"')
   })
 
+  it("ignores malformed persisted rows without blocking conditional request setup", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        ["broken:key", "stale metadata"],
+        ["broken:tag", { tag: 42, lastUsed: 123 }],
+        ["broken:timestamp", { tag: '"stale-tag"', lastUsed: "yesterday" }],
+        [42, { tag: '"stale-tag"', lastUsed: 123 }],
+        ["seeded:key", { tag: '"seeded-tag"', lastUsed: 123 }],
+      ])
+    )
+
+    const mod = await import("../etagCache")
+    const config = makeRequestConfig()
+    expect(() => mod.applyEtagHeader(config, "broken:key")).not.toThrow()
+    expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
+    expect(mod.etagCache.get("broken:key")).toBeUndefined()
+    expect(mod.etagCache.get("broken:tag")).toBeUndefined()
+    expect(mod.etagCache.get("broken:timestamp")).toBeUndefined()
+    expect(mod.etagCache.get("seeded:key")).toBe('"seeded-tag"')
+  })
+
+  it("does not hydrate a non-array JSON payload", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ "seeded:key": { tag: '"seeded-tag"', lastUsed: 123 } })
+    )
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    try {
+      const mod = await import("../etagCache")
+      expect(mod.etagCache.get("seeded:key")).toBeUndefined()
+      expect(warnSpy).toHaveBeenCalledWith("Failed to hydrate etag cache", expect.any(Error))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
   it("starts empty and logs a warning when stored JSON is corrupt", async () => {
     localStorage.setItem(KEY, "{not-valid-json")
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
