@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nats.errors import ConnectionClosedError
+from structlog import get_logger
+from structlog.testing import capture_logs
 
 from app.core.nats_broker import NatsTaskBroker
 from app.services.ws_hub_client import WsHubClient, invalidate_ws_hub_cache
@@ -177,6 +179,59 @@ async def test_invalidate_cache_all_fail(ws_client, monkeypatch):
 
     assert mock_broker.publish.call_count == 2
     mock_counter.inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evict_room", [False, True])
+async def test_invalidation_failure_logs_only_safe_diagnostics(
+    ws_client: tuple[WsHubClient, AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+    evict_room: bool,
+) -> None:
+    client, broker = ws_client
+    broker.publish.side_effect = ConnectionError("synthetic transport details")
+    monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", AsyncMock())
+
+    with capture_logs() as logs:
+        monkeypatch.setattr("app.services.ws_hub_client.logger", get_logger())
+        await client.invalidate_cache(
+            "example-user", "example-room", evict_room=evict_room
+        )
+
+    assert logs == [
+        {
+            "event": "ws_hub_invalidation_failed",
+            "log_level": "error",
+            "error_type": "ConnectionError",
+            "attempts": 2,
+            "evict_room": evict_room,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_control_publish_failure_logs_only_safe_diagnostics(
+    ws_client: tuple[WsHubClient, AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, broker = ws_client
+    broker.publish_core.side_effect = ConnectionClosedError(
+        "synthetic transport details"
+    )
+    monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", AsyncMock())
+
+    with capture_logs() as logs:
+        monkeypatch.setattr("app.services.ws_hub_client.logger", get_logger())
+        await client.publish_control_event("example-user", reason="example reason")
+
+    assert logs == [
+        {
+            "event": "ws_hub_control_publish_failed",
+            "log_level": "error",
+            "error_type": "ConnectionClosedError",
+            "attempts": 2,
+        }
+    ]
 
 
 @pytest.mark.asyncio
