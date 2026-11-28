@@ -1,4 +1,4 @@
-import { render, fireEvent } from "@testing-library/react"
+import { render } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
 
@@ -118,20 +118,22 @@ describe("ProfileModal contracts", () => {
     mocks.mediaQuery.mockReturnValue(false)
   })
 
-  it("removes the Escape listener when the modal closes", () => {
-    const add = vi.spyOn(document, "addEventListener")
-    const remove = vi.spyOn(document, "removeEventListener")
+  it("disables focus trapping when the modal closes", () => {
     const onClose = vi.fn()
     const view = render(
       <ProfileModal user={baseUser} loading={false} error={null} onClose={onClose} />
     )
-    const registration = add.mock.calls.find(([type]) => type === "keydown")
-    expect(registration).toBeDefined()
+    expect(mocks.focusTrap).toHaveBeenLastCalledWith({
+      active: true,
+      onDeactivate: onClose,
+      returnFocus: true,
+    })
     view.rerender(<ProfileModal user={null} loading={false} error={null} onClose={onClose} />)
-    expect(remove).toHaveBeenCalledWith("keydown", registration![1])
-    fireEvent.keyDown(document, { key: "Escape" })
+    expect(mocks.focusTrap).toHaveBeenLastCalledWith({
+      active: false,
+      onDeactivate: onClose,
+      returnFocus: true,
+    })
     expect(onClose).not.toHaveBeenCalled()
-    add.mockRestore()
-    remove.mockRestore()
   })
 })

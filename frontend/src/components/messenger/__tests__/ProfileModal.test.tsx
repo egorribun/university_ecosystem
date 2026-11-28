@@ -1,7 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
 import { ProfileModal } from "@/components/messenger/ProfileModal"
+import { Dialog } from "@/components/ui/Dialog"
 import type { User } from "@/types/User"
 
 /**
@@ -18,9 +19,7 @@ import type { User } from "@/types/User"
  *  - User state renders name + email + status badge.
  *
  * Mocking strategy:
- *  - useFocusTrap mocked to no-op (focus-trap behaviour is integration-
- *    tested via the real DOM in actual usage; here we just want to verify
- *    the modal renders and the onClose/onDeactivate wiring is correct).
+ *  - Use the real focus trap to exercise Escape ownership and restoration.
  *  - react-i18next passes keys through verbatim.
  *  - SmartImage mocked as <img>.
  */
@@ -40,10 +39,6 @@ vi.mock("@/components/media/SmartImage", () => ({
 const mockUseMediaQuery = vi.hoisted(() => vi.fn(() => false))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: mockUseMediaQuery }))
 
-vi.mock("@/hooks/useFocusTrap", () => ({
-  default: () => ({ current: null }),
-}))
-
 const testUser: User = {
   id: "user-1",
   email: "test@example.com",
@@ -53,8 +48,10 @@ const testUser: User = {
   role: "student",
 } as User
 
-afterEach(() => {
+afterEach(async () => {
   mockUseMediaQuery.mockReturnValue(false)
+  cleanup()
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
 })
 
 describe("ProfileModal", () => {
@@ -89,12 +86,42 @@ describe("ProfileModal", () => {
     expect(closeButton.className).toContain("min-w-[44px]")
   })
 
-  it("Escape key triggers onClose", () => {
+  it("calls onClose once for Escape", () => {
     const onClose = vi.fn()
     render(<ProfileModal user={testUser} loading={false} error={null} onClose={onClose} />)
 
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves Escape to the top dialog when a second modal is open", () => {
+    const onCloseProfile = vi.fn()
+    const onCloseTop = vi.fn()
+    const content = (topOpen: boolean) => (
+      <>
+        <ProfileModal user={testUser} loading={false} error={null} onClose={onCloseProfile} />
+        <Dialog open={topOpen} onClose={onCloseTop} title="Another modal">
+          Other content
+        </Dialog>
+      </>
+    )
+    const view = render(content(false))
+    view.rerender(content(true))
+
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Another modal" }), { key: "Escape" })
+    expect(onCloseTop).toHaveBeenCalledOnce()
+    expect(onCloseProfile).not.toHaveBeenCalled()
+  })
+
+  it("does not handle Escape after the profile is closed", () => {
+    const onClose = vi.fn()
+    const view = render(
+      <ProfileModal user={testUser} loading={false} error={null} onClose={onClose} />
+    )
+    view.rerender(<ProfileModal user={null} loading={false} error={null} onClose={onClose} />)
+
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("ignores non-Escape keys and closes from the close button", () => {
