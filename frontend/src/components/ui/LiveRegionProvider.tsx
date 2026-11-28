@@ -66,6 +66,12 @@ export function LiveRegionProvider({ children }: LiveRegionProviderProps) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
+    return () => {
+      clearTimeout(politeTimeoutRef.current ?? undefined)
+      clearTimeout(assertiveTimeoutRef.current ?? undefined)
+      politeTimeoutRef.current = null
+      assertiveTimeoutRef.current = null
+    }
   }, [])
 
   const announce = useCallback((message: string, politeness: LiveRegionPoliteness = "polite") => {
