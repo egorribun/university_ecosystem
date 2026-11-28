@@ -1226,11 +1226,11 @@ class EventBus:
         try:
             await handler(event)
         except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — catches handler errors, routes to DLQ (reviewed TD-27-04)
-            logger.exception(
-                "Handler %s failed for event %s: %s",
-                handler.__name__,
-                event.event_type,
-                e,
+            logger.error(
+                "Domain event handler failed",
+                event_type=event.event_type,
+                handler_name=handler.__name__,
+                error_type=type(e).__name__,
             )
             # Send to DLQ if configured
             if self._dlq is not None:
@@ -1241,12 +1241,10 @@ class EventBus:
                     # the error is catastrophic and visible.
                     logger.critical(
                         "DOMAIN EVENT LOST: Both handler and DLQ failed",
-                        extra={
-                            "original_error": str(e),
-                            "dlq_error": str(dlq_err),
-                            "event_type": event.event_type,
-                            "event_id": event.event_id,
-                        },
+                        handler_error_type=type(e).__name__,
+                        dlq_error_type=type(dlq_err).__name__,
+                        event_type=event.event_type,
+                        handler_name=handler.__name__,
                     )
 
 
