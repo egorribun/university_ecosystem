@@ -46,6 +46,7 @@ afterEach(() => {
   } finally {
     for (const element of ownedElements) element.remove()
     ownedElements.clear()
+    vi.unstubAllGlobals()
   }
 })
 describe("schedule keyboard interaction", () => {
@@ -67,6 +68,35 @@ describe("schedule keyboard interaction", () => {
     expect(result.current.activeCell).toEqual({ row: nextRow, col: nextCol })
     expect(opts.onSelect).toHaveBeenCalledExactlyOnceWith(nextRow, nextCol)
     expect(destination).toHaveFocus()
+  })
+  it("honors a live reduced-motion preference when focusing schedule cells", () => {
+    const preference = Object.assign(new EventTarget(), { matches: true })
+    vi.stubGlobal("matchMedia", () => preference)
+    const nextDay = cell(0, 1)
+    const today = cell(0, 0)
+    const scrollToNextDay = vi.spyOn(nextDay, "scrollIntoView")
+    const scrollToToday = vi.spyOn(today, "scrollIntoView")
+    renderHook(() => useScheduleKeyboardNav(options({ todayColIdx: 0 })))
+
+    press("ArrowRight")
+    expect(nextDay).toHaveFocus()
+    expect(scrollToNextDay).toHaveBeenCalledExactlyOnceWith({
+      behavior: "instant",
+      block: "nearest",
+      inline: "nearest",
+    })
+
+    act(() => {
+      preference.matches = false
+      preference.dispatchEvent(Object.assign(new Event("change"), { matches: false }))
+    })
+    press("t", {}, nextDay)
+    expect(today).toHaveFocus()
+    expect(scrollToToday).toHaveBeenCalledExactlyOnceWith({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    })
   })
   it("opens the current selection once without moving focus", () => {
     const destination = cell(1, 1),

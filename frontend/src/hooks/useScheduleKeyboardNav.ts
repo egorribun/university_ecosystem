@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from "react"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface UseScheduleKeyboardNavOptions {
   /** Number of visible columns (days) */
@@ -39,6 +40,7 @@ export function useScheduleKeyboardNav({
 }: UseScheduleKeyboardNavOptions) {
   const [activeCell, setActiveCell] = useState<CellPosition | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const moveTo = useCallback(
     (row: number, col: number) => {
@@ -54,10 +56,14 @@ export function useScheduleKeyboardNav({
       const el = document.getElementById(cellId)
       if (el) {
         el.focus({ preventScroll: false })
-        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
+        el.scrollIntoView({
+          behavior: prefersReducedMotion ? "instant" : "smooth",
+          block: "nearest",
+          inline: "nearest",
+        })
       }
     },
-    [colCount, rowCount, onSelect]
+    [colCount, rowCount, onSelect, prefersReducedMotion]
   )
 
   const handleKeyDown = useCallback(
