@@ -10,8 +10,11 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import Request
+from structlog.testing import capture_logs
 
 from app.core.config import settings
+from app.core.logging import get_logger
+from app.core.ratelimit import logic as rate_limit_logic
 from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
 from app.core.ratelimit.fastapi import (
     get_progressive_delay_tracker,
@@ -285,25 +288,38 @@ async def test_check_rate_limit_redis_success(monkeypatch):
 async def test_check_rate_limit_redis_error_uses_memory_fallback(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
     mock_strategy = MagicMock()
-    mock_strategy.check = AsyncMock(side_effect=OSError("redis unavailable"))
+    mock_strategy.check = AsyncMock(
+        side_effect=OSError("backend endpoint 192.0.2.20 unavailable")
+    )
     mock_cb = MagicMock()
     admission = SimpleNamespace(allowed=True)
     mock_cb.admit_request.return_value = admission
 
     with (
+        capture_logs() as logs,
         patch(
             "app.core.ratelimit.logic._get_redis_strategy",
             return_value=mock_strategy,
         ),
         patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
     ):
+        monkeypatch.setattr(
+            rate_limit_logic, "_log", get_logger(rate_limit_logic.__name__)
+        )
         result = await check_rate_limit(
-            identifier="redis-error-user",
+            identifier="192.0.2.21",
             limit=4,
             window_seconds=60,
             redis_url="redis://localhost",
         )
 
+    assert logs == [
+        {
+            "event": "rate_limit_storage_unavailable_fallback",
+            "extra": {"error_type": "OSError"},
+            "log_level": "warning",
+        }
+    ]
     assert result.allowed is True
     mock_cb.record_failure.assert_called_once_with(admission)
     mock_cb.abandon_request.assert_called_once_with(admission)
@@ -317,14 +333,26 @@ async def test_check_rate_limit_circuit_open(monkeypatch):
     mock_cb.admit_request.return_value = SimpleNamespace(allowed=False)
     mock_cb.state.name = "OPEN"
 
-    with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb):
+    with (
+        capture_logs() as logs,
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
+    ):
+        monkeypatch.setattr(
+            rate_limit_logic, "_log", get_logger(rate_limit_logic.__name__)
+        )
         res = await check_rate_limit(
-            identifier="user_123",
+            identifier="192.0.2.22",
             limit=5,
             window_seconds=60,
             redis_url="redis://localhost",
         )
-        # line 98: should log circuit open debug log, and check fallback memory
+        assert logs == [
+            {
+                "event": "rate_limit_circuit_open_fallback",
+                "extra": {"state": "OPEN"},
+                "log_level": "debug",
+            }
+        ]
         assert res.allowed is True  # fallback memory allowed it
         mock_cb.admit_request.assert_called_once_with()
         mock_cb.record_success.assert_not_called()
@@ -411,19 +439,34 @@ async def test_enforce_rate_limit_success_records_circuit_success(monkeypatch):
 async def test_enforce_rate_limit_redis_error_uses_capped_fallback(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
     strategy = MagicMock()
-    strategy.check = AsyncMock(side_effect=OSError("redis down"))
+    strategy.check = AsyncMock(
+        side_effect=OSError("backend endpoint 192.0.2.20 unavailable")
+    )
     circuit = MagicMock()
     admission = SimpleNamespace(allowed=True)
     circuit.admit_request.return_value = admission
 
-    with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
+    with (
+        capture_logs() as logs,
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit),
+    ):
+        monkeypatch.setattr(
+            rate_limit_logic, "_log", get_logger(rate_limit_logic.__name__)
+        )
         result = await enforce_rate_limit(
-            identifier="user",
+            identifier="192.0.2.23",
             limit=5,
             window_seconds=60,
             strategy=strategy,
         )
 
+    assert logs == [
+        {
+            "event": "rate_limit_storage_unavailable_fallback",
+            "extra": {"error_type": "OSError"},
+            "log_level": "warning",
+        }
+    ]
     assert result.allowed is True
     circuit.record_failure.assert_called_once_with(admission)
     circuit.abandon_request.assert_called_once_with(admission)
