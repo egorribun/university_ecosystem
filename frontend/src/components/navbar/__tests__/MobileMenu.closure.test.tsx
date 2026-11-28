@@ -183,7 +183,7 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof MobileMenu>> 
     drawerTrapRef,
     ...overrides,
   }
-  return { onClose, go, ...render(<MobileMenu {...props} />) }
+  return { onClose, go, props, ...render(<MobileMenu {...props} />) }
 }
 
 describe("MobileMenu closure paths", () => {
@@ -193,6 +193,26 @@ describe("MobileMenu closure paths", () => {
     expect(getMobileDrawerOffset(-12)).toBe(0)
     expect(getMobileDrawerOffset(Number.NaN)).toBe(0)
     expect(() => clickGlobalNotifications()).not.toThrow()
+  })
+
+  it("resolves the navbar trigger target without exposing a closed dialog", () => {
+    const { props, rerender } = renderMenu({ isOpen: false })
+    const controlledId = "mobile-drawer"
+    const closedTarget = document.getElementById(controlledId)
+
+    expect(closedTarget).toBeInTheDocument()
+    expect(closedTarget).not.toBeVisible()
+    expect(screen.queryByRole("dialog", { hidden: true })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
+
+    rerender(<MobileMenu {...props} isOpen />)
+    expect(screen.getByRole("dialog")).toBe(document.getElementById(controlledId))
+    expect(document.querySelectorAll("#mobile-drawer")).toHaveLength(1)
+
+    rerender(<MobileMenu {...props} />)
+    expect(document.getElementById(controlledId)).not.toBeVisible()
+    expect(screen.queryByRole("dialog", { hidden: true })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("mobile-menu-backdrop")).not.toBeInTheDocument()
   })
 
   it("renders authenticated navigation and wires every drawer action", async () => {
@@ -302,16 +322,16 @@ describe("MobileMenu closure paths", () => {
     expect(onClose).toHaveBeenCalledTimes(4)
   })
 
-  it("renders nothing while closed and supports unauthenticated reduced-motion mode", () => {
-    const { container } = renderMenu({
+  it("ignores Escape while the unauthenticated reduced-motion drawer is closed", () => {
+    const { onClose } = renderMenu({
       isOpen: false,
       isAuth: false,
       user: null,
       prefersReducedMotion: true,
     })
 
-    expect(container).toBeEmptyDOMElement()
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("keeps the profile private when a stale user object is supplied while signed out", () => {
