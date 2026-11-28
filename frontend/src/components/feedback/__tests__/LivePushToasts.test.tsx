@@ -540,6 +540,49 @@ describe("LivePushToasts", () => {
     )
   })
 
+  it("shows and dismisses toasts without animation for reduced motion", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    }))
+
+    try {
+      render(<LivePushToasts />)
+      await dispatchSwMessage({
+        type: "PUSH_NOTIFICATION",
+        toast: { id: "t-reduced-motion", title: "Still toast" },
+      })
+
+      expect(screen.getByText("Still toast")).toBeVisible()
+      const toast = motionCapture.divProps.find((props) => props.role === "status")
+      expect(toast).toMatchObject({
+        initial: false,
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0 },
+        transition: { duration: 0 },
+      })
+      expect(
+        motionCapture.divProps.some((props) => {
+          const initial = props.initial
+          return typeof initial === "object" && initial !== null && "width" in initial
+        })
+      ).toBe(false)
+
+      act(() => vi.advanceTimersByTime(5999))
+      expect(screen.getByText("Still toast")).toBeVisible()
+      act(() => vi.advanceTimersByTime(1))
+      expect(screen.queryByText("Still toast")).not.toBeInTheDocument()
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("subscribes to the service-worker message channel on mount", () => {
     render(<LivePushToasts />)
     expect(messageHandler).toBeTypeOf("function")
