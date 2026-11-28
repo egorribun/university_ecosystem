@@ -257,7 +257,9 @@ describe("LoginCredentialForm — show password", () => {
     const user = userEvent.setup()
     await mountWithStub(() => ({ setShowPassword }))
 
-    await user.click(screen.getByRole("button", { name: /show password/i }))
+    const show = screen.getByRole("button", { name: /show password/i })
+    expect(show).not.toHaveAttribute("aria-pressed")
+    await user.click(show)
     // Click toggles via the functional updater — at least one call.
     expect(setShowPassword).toHaveBeenCalled()
   })
@@ -267,6 +269,7 @@ describe("LoginCredentialForm — show password", () => {
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "text")
     const hide = screen.getByRole("button", { name: /hide password/i })
+    expect(hide).not.toHaveAttribute("aria-pressed")
     expect(hide).toHaveClass("min-h-11", "min-w-11")
     expect(hide).toHaveAttribute("title", expect.stringMatching(/hide password/i))
     expect(hide).toHaveAttribute("aria-label", expect.stringMatching(/hide password/i))

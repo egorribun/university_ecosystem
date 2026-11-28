@@ -84,7 +84,10 @@ for (const { theme, system } of scenarios) {
     await expect(input).toHaveAttribute("type", "password")
     await toggle.click()
     await expect(input).toHaveAttribute("type", "text")
-    await expect(toggle).toHaveAttribute("aria-pressed", "true")
+    await expect(toggle).toHaveAccessibleName(/^(Hide password|Скрыть пароль)$/u)
+    await toggle.click()
+    await expect(input).toHaveAttribute("type", "password")
+    await expect(toggle).toHaveAccessibleName(/^(Show password|Показать пароль)$/u)
     await testInfo.attach("browser-health.json", {
       body: Buffer.from(JSON.stringify({ title: await page.title(), pageErrors, consoleErrors })),
       contentType: "application/json",

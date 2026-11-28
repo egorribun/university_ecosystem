@@ -754,7 +754,6 @@ export default function ResetPassword() {
                                   ? "auth:actions.hideCredential"
                                   : "auth:actions.showPassword"
                               )}
-                              aria-pressed={showPass}
                             >
                               {showPass ? (
                                 <VisibilityOff size={16} aria-hidden="true" />
@@ -840,12 +839,11 @@ export default function ResetPassword() {
                               disabled={controlsDisabled}
                               onClick={() => setShowConfirm(!showConfirm)}
                               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/[calc(var(--opacity-subtle)*100%)]"
-                              aria-label={t(
+                              aria-label={
                                 showConfirm
-                                  ? "auth:actions.hideCredential"
-                                  : "auth:actions.showPassword"
-                              )}
-                              aria-pressed={showConfirm}
+                                  ? t("auth:confirmationVisibility.hide")
+                                  : t("auth:confirmationVisibility.show")
+                              }
                             >
                               {showConfirm ? (
                                 <VisibilityOff size={16} aria-hidden="true" />

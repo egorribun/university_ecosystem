@@ -333,7 +333,6 @@ const Register = () => {
                     t(showPass ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
                     undefined
                   }
-                  aria-pressed={showPass}
                 >
                   {showPass ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />
@@ -423,10 +422,10 @@ const Register = () => {
                   disabled={controlsDisabled}
                   className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={
-                    t(showConfirm ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
-                    undefined
+                    (showConfirm
+                      ? t("auth:confirmationVisibility.hide")
+                      : t("auth:confirmationVisibility.show")) ?? undefined
                   }
-                  aria-pressed={showConfirm}
                 >
                   {showConfirm ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />

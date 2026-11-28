@@ -122,7 +122,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
                 t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
                 undefined
               }
-              aria-pressed={showPassword}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" aria-hidden="true" />

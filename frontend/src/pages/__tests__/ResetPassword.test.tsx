@@ -307,7 +307,9 @@ describe("ResetPassword page", () => {
     expect(passwordToggle).not.toHaveAttribute("tabindex", "-1")
     expect(confirmToggle).not.toHaveAttribute("tabindex", "-1")
     expect(passwordToggle).toHaveAccessibleName(tAuth("actions.showPassword"))
-    expect(confirmToggle).toHaveAccessibleName(tAuth("actions.showPassword"))
+    expect(passwordToggle).not.toHaveAttribute("aria-pressed")
+    expect(confirmToggle).toHaveAccessibleName("Show password confirmation")
+    expect(confirmToggle).not.toHaveAttribute("aria-pressed")
 
     expect(password).toHaveAttribute("type", "password")
     await user.click(passwordToggle)
@@ -315,7 +317,9 @@ describe("ResetPassword page", () => {
     expect(passwordToggle).toHaveAccessibleName(tAuth("actions.hideCredential"))
     await user.click(confirmToggle)
     expect(confirmPassword).toHaveAttribute("type", "text")
-    expect(confirmToggle).toHaveAccessibleName(tAuth("actions.hideCredential"))
+    expect(confirmToggle).toHaveAccessibleName("Hide password confirmation")
+    expect(passwordToggle).not.toHaveAttribute("aria-pressed")
+    expect(confirmToggle).not.toHaveAttribute("aria-pressed")
 
     const modifierState = vi
       .spyOn(window.KeyboardEvent.prototype, "getModifierState")
@@ -1997,6 +2001,27 @@ describe("ResetPassword behaviour details", () => {
       router.history.destroy()
     }
   })
+})
+
+it("names the confirmation visibility actions distinctly in Russian", async () => {
+  const selectedLanguage = window.__UE_SELECTED_LANG__
+  window.__UE_SELECTED_LANG__ = "ru"
+  try {
+    const user = userEvent.setup()
+    await renderWithToken()
+    const password = screen.getByRole("button", { name: "Показать пароль" })
+    const confirmation = screen.getByRole("button", {
+      name: "Показать подтверждение пароля",
+    })
+    await user.click(confirmation)
+    expect(confirmation).toHaveAccessibleName("Скрыть подтверждение пароля")
+    expect(password).toHaveAccessibleName("Показать пароль")
+  } finally {
+    cleanup()
+    await i18n.changeLanguage("en")
+    if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+    else window.__UE_SELECTED_LANG__ = selectedLanguage
+  }
 })
 
 describe("reset password validation locale regression", () => {
