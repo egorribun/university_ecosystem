@@ -325,4 +325,26 @@ describe("DayColumn closure paths", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
+
+  it("dismisses completion confetti on time after the lesson count changes", () => {
+    vi.useFakeTimers()
+    const { container, rerender } = render(<DayColumn {...baseProps} isToday dayComplete />)
+    const confetti = () => container.querySelector(".sched-confetti-dot")
+
+    expect(screen.getByRole("status")).toHaveTextContent("schedule:dayComplete")
+    expect(confetti()).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(1000))
+    rerender(<DayColumn {...baseProps} lessons={LESSONS.slice(0, 1)} isToday dayComplete />)
+    act(() => vi.advanceTimersByTime(999))
+    expect(screen.getByRole("status")).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(confetti()).not.toBeInTheDocument()
+
+    rerender(<DayColumn {...baseProps} isToday dayComplete />)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(confetti()).not.toBeInTheDocument()
+  })
 })
