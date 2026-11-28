@@ -427,7 +427,8 @@ func TestReplayCancellationAdaptersAndConnectionFailurePaths(t *testing.T) {
 	}
 	h.terminateChatMessage(context.Background(), &nats.Msg{Subject: "chat.room"}, "binding mismatch")
 	assert.Contains(t, logs.String(), "Failed to terminate rejected NATS chat message")
-	assert.Contains(t, logs.String(), "term unavailable")
+	assert.Contains(t, logs.String(), `"error_type":"*errors.errorString"`)
+	assert.NotContains(t, logs.String(), "term unavailable")
 	assert.Equal(t, 1, jetStreamNakCalls, "failed TERM must request bounded redelivery")
 	jetStreamTermFunc = func(*nats.Msg) error { return nats.ErrMsgNotBound }
 	h.terminateChatMessage(context.Background(), &nats.Msg{Subject: "chat.room"}, "core fallback")

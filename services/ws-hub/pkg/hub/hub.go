@@ -1922,7 +1922,7 @@ func (h *Hub) applyChatSequence(ctx context.Context, msg *nats.Msg, wsMsg *Messa
 		return true
 	}
 	h.Logger.WarnContext(ctx, "ws-hub: unsequenced JetStream chat message rejected",
-		"subject", msg.Subject, "err", err)
+		"error_type", fmt.Sprintf("%T", err))
 	h.terminateChatMessage(ctx, msg, "missing JetStream sequence")
 	return false
 }
@@ -1933,7 +1933,7 @@ func (h *Hub) terminateChatMessage(ctx context.Context, msg *nats.Msg, reason st
 			return
 		}
 		h.Logger.WarnContext(ctx, "Failed to terminate rejected NATS chat message",
-			"subject", msg.Subject, "reason", reason, "err", err)
+			"reason", reason, "error_type", fmt.Sprintf("%T", err))
 		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
@@ -1959,7 +1959,7 @@ func sequencedChatUndeliverableReason(wsMsg *Message) string {
 func (h *Hub) rejectUndeliverableSequencedChat(ctx context.Context, msg *nats.Msg, wsMsg *Message, reason string) {
 	BroadcastDropsTotal.Inc()
 	h.Logger.WarnContext(ctx, "ws-hub: sequenced chat message cannot be broadcast; resynchronizing room",
-		"subject", msg.Subject, "room", wsMsg.Room, "sequence", wsMsg.replaySequence(), "reason", reason)
+		"sequence", wsMsg.replaySequence(), "reason", reason)
 	h.failRoomClients(wsMsg.Room)
 	h.terminateChatMessage(ctx, msg, reason)
 }
@@ -1989,7 +1989,7 @@ func (h *Hub) enqueueChatDelivery(
 			h.failRoomClients(wsMsg.Room)
 		}
 		h.Logger.WarnContext(ctx, "Broadcast channel full, dropping NATS chat message",
-			"subject", msg.Subject)
+			"queue_capacity", cap(h.Broadcast))
 		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
