@@ -99,7 +99,13 @@ async def _guarded[T](
     try:
         return await operation(service)
     except _SEARCH_UNAVAILABLE as exc:
-        logger.warning("search_index_unavailable: %s", exc)
+        logger.warning(
+            "search_index_unavailable",
+            error_type=type(exc).__name__,
+            http_status=exc.status_code
+            if isinstance(exc, elasticsearch.ApiError)
+            else None,
+        )
         return None
     finally:
         await service.close()

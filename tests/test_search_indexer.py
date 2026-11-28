@@ -208,6 +208,43 @@ async def test_search_outage_never_fails_the_caller(session, service, error):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("api_error", [False, True])
+async def test_search_outage_logs_only_safe_diagnostics(
+    service: MagicMock, caplog: pytest.LogCaptureFixture, api_error: bool
+) -> None:
+    private_detail = "private indexing diagnostic"
+    if api_error:
+        error: Exception = elasticsearch.ApiError(
+            "rejected document",
+            ApiResponseMeta(
+                status=400,
+                http_version="1.1",
+                headers=HttpHeaders(),
+                duration=0.0,
+                node=NodeConfig("http", "es", 9200),
+            ),
+            body={"error": {"root_cause": [{"reason": private_detail}]}},
+        )
+        expected_status = 400
+    else:
+        error = OSError(private_detail)
+        expected_status = None
+    service.delete_document.side_effect = error
+
+    with caplog.at_level("WARNING", logger=search_indexer.__name__):
+        await search_indexer.remove_document("news", uuid.uuid4())
+
+    [record] = caplog.records
+    assert private_detail not in record.getMessage()
+    assert "search_index_unavailable" in record.getMessage()
+    assert isinstance(record.msg, dict)
+    assert record.msg.get("error_type") == type(error).__name__
+    assert record.msg.get("http_status") == expected_status
+    assert record.exc_info is None
+    service.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_unexpected_errors_are_not_swallowed(session, service):
     service.delete_document.side_effect = ValueError("bug")
     with pytest.raises(ValueError):
