@@ -150,7 +150,6 @@ async def _deliver_email_message(
     error_event: str,
     fallback_fields: dict[str, object] | None = None,
     error_fields: dict[str, object] | None = None,
-    include_exception_details: bool = True,
 ) -> None:
     """Send email without leaving blocking SMTP work past task cancellation."""
     from app.core.config import settings
@@ -209,15 +208,17 @@ async def _deliver_email_message(
             raise
         else:
             client.close()
-    except (OSError, aiosmtplib.SMTPException):
+    except (OSError, aiosmtplib.SMTPException) as exc:
         extra = {"email": to_email}
         if error_fields:
             extra.update(error_fields)
             if "link" in extra:
                 extra["link"] = email_utils._redact_sensitive_query(str(extra["link"]))
-        email_utils._log_event(
-            logging.ERROR, error_event, extra=extra, exc_info=include_exception_details
-        )
+        # SMTP exception text and traceback frames can contain recipient data.
+        extra["error_type"] = type(exc).__name__
+        if isinstance(exc, aiosmtplib.SMTPResponseException):
+            extra["smtp_status"] = exc.code
+        email_utils._log_event(logging.ERROR, error_event, extra=extra, exc_info=False)
 
 
 async def _deliver_auth_email(
@@ -253,7 +254,6 @@ async def _deliver_auth_email(
             error_event="password.reset_email.error",
             fallback_fields={"link": link},
             error_fields={"link": link},
-            include_exception_details=False,
         )
     except asyncio.CancelledError:
         return "cancelled"
