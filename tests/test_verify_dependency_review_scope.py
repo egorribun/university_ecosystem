@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import io
 import json
@@ -17,6 +18,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts" / "quality"))
 
+from scripts.quality import verify_dependency_review_scope as _scope_module
 from scripts.quality.verify_dependency_review_scope import (
     CONFIG_PATH,
     EXPECTED_MODULES,
@@ -53,6 +55,19 @@ from scripts.quality.verify_dependency_review_scope import (
     verify_policy_scope,
     write_dependency_changes_file,
 )
+
+
+@contextlib.contextmanager
+def _patch_module_sleep():
+    """Patch only the module's ``time`` binding, not the process-wide ``time.sleep``.
+
+    Patching ``<module>.time.sleep`` replaces ``time.sleep`` for every thread of the
+    pytest-xdist worker, so an unrelated background thread can add calls to the mock.
+    """
+    sleep = Mock()
+    with patch.object(_scope_module, "time", SimpleNamespace(sleep=sleep)):
+        yield sleep
+
 
 PINNED_MODULE_COUNT = sum(len(mods) for mods in EXPECTED_MODULES.values())
 
@@ -781,7 +796,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -802,7 +817,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -823,7 +838,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error, response]
@@ -843,7 +858,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [error for error, _ in errors_and_bodies]
@@ -864,7 +879,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = error
@@ -885,7 +900,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.return_value = response
@@ -904,7 +919,7 @@ class DependencyCompareFileTests(unittest.TestCase):
             patch(
                 "scripts.quality.verify_dependency_review_scope.build_opener"
             ) as build_opener,
-            patch("scripts.quality.verify_dependency_review_scope.time.sleep") as sleep,
+            _patch_module_sleep() as sleep,
         ):
             opener = build_opener.return_value
             opener.open.side_effect = [URLError(TimeoutError("timed out")), response]
@@ -1049,9 +1064,7 @@ class DependencyCompareFileTests(unittest.TestCase):
                 "Bearer test-only-token"
             )
             with (
-                patch(
-                    "scripts.quality.verify_dependency_review_scope.time.sleep"
-                ) as sleep,
+                _patch_module_sleep() as sleep,
                 self.assertRaisesRegex(
                     ValueError, "Dependency graph compare request failed"
                 ) as caught,
