@@ -111,7 +111,10 @@ class GraphQLTokenValidator:
             return result.scalar_one_or_none()
         except (OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — fail-closed on infra fault (deny, don't accept).
-            logger.warning("GraphQL: DB session load failed; denying request: %s", exc)
+            logger.warning(
+                "GraphQL: DB session load failed; denying request",
+                exception_type=type(exc).__name__,
+            )
             return None
 
     def _check_expiry(self, session: ActiveSession) -> bool:
@@ -151,14 +154,13 @@ class GraphQLTokenValidator:
             redis_svc = RedisSessionService()
             await fp_svc.validate_fingerprint(user, session, self._session, redis_svc)
             return True
-        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — fingerprint mismatch denies session (reviewed TD-27-04)
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — fingerprint mismatch denies session (reviewed TD-27-04)
             # RZ-20-04: KEEP broad — raise_forbidden() raises HTTPException which
             # is the EXPECTED signal for fingerprint mismatch. We must catch all
             # exceptions here because the fingerprint service may raise HTTP 403
             # or any infra error — both result in session denial (fail-closed).
             logger.warning(
-                "GraphQL: fingerprint mismatch for user=%s jti=%s — denying",
-                user.id,
-                session.jti,
+                "GraphQL: fingerprint validation failed; denying request",
+                exception_type=type(exc).__name__,
             )
             return False
