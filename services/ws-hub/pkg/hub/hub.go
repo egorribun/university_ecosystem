@@ -2241,9 +2241,13 @@ func (h *Hub) applyCacheInvalidation(
 	if payload.Data.EvictRoom {
 		publication := roomRevocationPublicationFromMessage(msg)
 		if err := h.evictRoomMembershipAt(ctx, payload.Data.UserID, payload.Data.RoomID, publication); err != nil {
+			errorType := fmt.Sprintf("%T", err)
 			h.Logger.ErrorContext(ctx, "Room membership revocation could not be confirmed; retrying",
-				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
-			span.RecordError(err)
+				"error_type", errorType)
+			span.AddEvent(semconv.ExceptionEventName, trace.WithAttributes(
+				semconv.ExceptionType(errorType),
+				semconv.ExceptionMessage("room membership revocation could not be confirmed"),
+			))
 			safeNakWithDelay(msg, 5*time.Second)
 			return false
 		}
