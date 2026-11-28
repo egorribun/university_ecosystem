@@ -2123,7 +2123,7 @@ _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"email-mfa-sibling-login|email-mfa-verification-start|"
     r"email-mfa-verification-accept|email-mfa-enable-start|email-mfa-enable-accept|"
     r"email-mfa-enabled-login|email-mfa-login-resend-early|email-mfa-login-accept|"
-    r"topics-status) "
+    r"topics-status|topics-cleanup-csrf|topics-cleanup-retry) "
     r"status=(?P<status>[1-5][0-9]{2})"
 )
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
@@ -2160,6 +2160,8 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "email-mfa-login-resend-early",
         "email-mfa-login-accept",
         "topics-status",
+        "topics-cleanup-csrf",
+        "topics-cleanup-retry",
     )
 }
 # Keep the existing hard output bound as the closed check set grows.
@@ -3905,7 +3907,7 @@ _HTTP_OPERATION_CASE_LINES = {
     "not-found-i18n.live.spec.ts": (11, 65),
     "notification-in-app.live.spec.ts": (293,),
     "notification-preferences.live.spec.ts": (217,),
-    "notification-topics-delivery.live.spec.ts": (1131,),
+    "notification-topics-delivery.live.spec.ts": (1153,),
     "password-reset.live.spec.ts": (129,),
     "profile-csrf.live.spec.ts": (99,),
     "profile-persistence.live.spec.ts": (102, 302),

@@ -146,6 +146,13 @@ test("topics requests report their first unexpected status before the hard asser
   assert.match(reporter, /reportLiveHttpStatus\(topicsStatusProject, "topics-status", status\)/u)
   // Only the first unexpected status of an attempt is reported.
   assert.match(reporter, /topicsStatusProject = null/u)
+  // A cleanup 403 reports only the CSRF marker and one delayed repeat status,
+  // and the original denial still reaches the strict cleanup assertion.
+  assert.match(spec, /topicsCleanupProject = testInfo\.project\.name/u)
+  assert.match(spec, /if \(denial\.status !== 403 \|\| project === null\) return denial/u)
+  assert.match(spec, /reportLiveHttpStatus\(project, "topics-cleanup-csrf", 403\)/u)
+  assert.match(spec, /reportLiveHttpStatus\(project, "topics-cleanup-retry", repeat\.status\)/u)
+  assert.match(spec, /\n {2}return denial\n\}/u)
   for (const hardAssertion of [
     /reportTopicsStatus\(response\.status\(\)\)\s+expect\(response\.status\(\), description\)\.toBe\(200\)/u,
     /reportTopicsStatus\(response\.status\(\)\)\s+expect\(response\.status\(\), "admin can enumerate every recipient page"\)\.toBe\(200\)/u,

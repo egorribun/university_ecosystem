@@ -2867,17 +2867,18 @@ def test_live_playwright_email_otp_and_mfa_http_statuses_are_closed(
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
-@pytest.mark.parametrize("status", [401, 403, 429, 503])
+@pytest.mark.parametrize("status", [200, 401, 403, 429, 503])
+@pytest.mark.parametrize(
+    "check", ["topics-status", "topics-cleanup-csrf", "topics-cleanup-retry"]
+)
 def test_live_playwright_topics_status_is_a_closed_check(
-    project: str, status: int
+    project: str, status: int, check: str
 ) -> None:
-    row = f"UE_LIVE_HTTP_STATUS_V1 project={project} check=topics-status status={status}\n"
-    assert live_stand._live_playwright_http_statuses(row) == [
-        (project, "topics-status", status)
-    ]
+    row = f"UE_LIVE_HTTP_STATUS_V1 project={project} check={check} status={status}\n"
+    assert live_stand._live_playwright_http_statuses(row) == [(project, check, status)]
     assert (
         live_stand._live_playwright_http_statuses(
-            row.replace("check=topics-status", "check=topics-status-private")
+            row.replace(f"check={check}", f"check={check}-private")
         )
         == []
     )
