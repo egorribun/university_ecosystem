@@ -8,9 +8,9 @@
 
 ### `main`
 
-- `main` = `d5001041acff1aa77e34d84ef178b921d8ad4c7f` после обычного merge
-  [#1697](https://github.com/egorribun/university_ecosystem/pull/1697) (ожидания FCM) 2026-11-27 в 23:37 UTC.
-  Все 78 required checks и CodeQL прошли на head `c28e9bfdd`.
+- `main` = `5ebbeeb19` после #1697 (ожидания FCM), #1699 (повтор записи SpiceDB, WebSocket 60 с) и
+  #1704 (диагностика 403 в topics); 78 required checks и CodeQL прошли на каждом head.
+  [#1706](https://github.com/egorribun/university_ecosystem/pull/1706) (SW-исправление #1604) открыт, CI идёт.
 - После `7e54feee` влиты:
   - [#1578](https://github.com/egorribun/university_ecosystem/pull/1578): Caddy с `libcrypto3`/`libssl3`
     `3.5.9-r1` (исключение из cooldown, [DEPENDENCY_COOLDOWN_EMERGENCY.md](../../DEPENDENCY_COOLDOWN_EMERGENCY.md),
@@ -37,10 +37,10 @@
 стартов Core-job не менее 7200 секунд, только с 8 утверждёнными skip и всеми шестью кейсами AUD-154 с
 retry 0. Во время серии ничего не сливать в `main`.
 
-- Core №1 на `d5001041a` ([46083562865](https://github.com/egorribun/university_ecosystem/actions/runs/46083562865))
-  не зачтён: mobile `notification-topics-delivery` получил 403 на DELETE своего мероприятия (не записан
-  best-effort `event#creator`; запись теперь повторяется при временных сбоях SpiceDB); flaky — map zoom
-  (51 мс) и `messenger-membership-revocation`. На `0cc886f44` map zoom (50–76 мс) был шумом раннера.
+- Core №1 на `5ebbeeb19` ([46113141231](https://github.com/egorribun/university_ecosystem/actions/runs/46113141231)):
+  0 failed, 2 flaky (mobile footer; mobile push news — уведомление не показано за 120 с при 201 от FCM).
+  Раньше: 403 на cleanup мероприятия в topics на `d5001041a` и `cd35a4478` (повтор записи не помог; ждём
+  строк `topics-cleanup-csrf`/`-retry`), map zoom 51–76 мс — шум раннера.
 - Серии на `7e54feee`, `a2d295bc7`, `15d7cadf4`, `dd7296b8d`, `91c414a75`, `29ae8dd63`, `e45e5520f`,
   `99867d9b1` и `1d5294bf` срывались на flaky. Все шесть кейсов AUD-154 каждый раз проходили с retry 0.
   - Web Push 410 у свежей подписки: снято выдержкой 15 секунд и переподпиской.
@@ -141,10 +141,9 @@ dump `59ff0a8e259be2b5b34edd4bdf132655ebdcf3cf75c72b039561c7d48d77fddc`.
 
 ## Следующие шаги
 
-1. Пара Core на `main` с поднятыми ожиданиями FCM и закрытие AUD-154 (512/512) одним коммитом шести
-   файлов счёта по hosted-доказательствам.
-2. Влить #1611: исправление service worker, черновики облачного агента, R59 и R02; затем проверить, ушёл ли
-   flaky footer.
+1. Влить #1706; расследовать mobile native push (третий прогон подряд без уведомления при 201); затем
+   пара Core и закрытие AUD-154 (512/512) одним коммитом шести файлов счёта.
+2. Влить остаток #1611: черновики облачного агента, R59 и R02.
 3. Стенд этапа 4 на новом `main`: пакет 96 PNG, restore и avatar в браузере; пакет утверждает владелец.
 4. Приёмка строк этапа 3 на подписанном стенде.
 5. Freeze кандидата, независимое review auth, сессий и данных, публикация v1.0.0.

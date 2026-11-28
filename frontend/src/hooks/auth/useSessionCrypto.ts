@@ -377,10 +377,12 @@ export const useSessionCrypto = () => {
         purge = false,
         force = false,
         confirmReadiness = false,
+        resumable = false,
       }: {
         purge?: boolean
         force?: boolean
         confirmReadiness?: boolean
+        resumable?: boolean
       } = {}
     ) => {
       const revision = ++cacheRevisionRef.current
@@ -388,10 +390,17 @@ export const useSessionCrypto = () => {
       if (!signingKey && !purge) return
       if (signingKey && sessionCacheNonceRef.current && sessionCacheNonceRef.current !== generation)
         return
-      // Disable the old namespace before any asynchronous key derivation.
+      // Disable the old namespace before any asynchronous key derivation. A page's
+      // first key only suspends it: the worker keeps responses already in flight
+      // solely if this page then restores exactly the same session scope.
       if (purge || !signingKey) {
         sessionCacheHashRef.current = null
-        sendServiceWorkerMessage({ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE })
+        sendServiceWorkerMessage({
+          type:
+            resumable && signingKey
+              ? SERVICE_WORKER_MESSAGE_TYPES.SUSPEND_API_CACHE
+              : SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+        })
       }
       const nextHash = signingKey ? await hashSessionIdentifier(signingKey) : null
       if (revision !== cacheRevisionRef.current || generation !== getBrowserSessionGeneration())
@@ -446,6 +455,8 @@ export const useSessionCrypto = () => {
       value: string | null,
       onInstall?: (revision: number, generation: string | null) => void
     ) => {
+      // Only a page without any earlier key is bootstrapping; a key change clears.
+      const firstKey = sessionSigningKeyRef.current === null
       if (value !== sessionSigningKeyRef.current) {
         if (
           sessionCacheHashRef.current &&
@@ -473,7 +484,11 @@ export const useSessionCrypto = () => {
       // Hand off this installation before cache delivery or hashing can yield.
       onInstall?.(sessionRevisionRef.current, getBrowserSessionGeneration())
       setSessionSigningKeyState(value)
-      await sendSessionCacheUpdate(value, { purge: true, confirmReadiness: !!onInstall })
+      await sendSessionCacheUpdate(value, {
+        purge: true,
+        confirmReadiness: !!onInstall,
+        resumable: firstKey,
+      })
     },
     [sendSessionCacheUpdate]
   )
