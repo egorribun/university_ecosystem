@@ -187,10 +187,14 @@ export function DayColumn({
     if (shouldCelebrateDay(dayComplete, isToday, lessons.length, celebratedRef.current)) {
       celebratedRef.current = true
       setShowConfetti(true)
-      const timer = setTimeout(() => setShowConfetti(false), 2000)
-      return () => clearTimeout(timer)
     }
   }, [dayComplete, isToday, lessons.length])
+
+  useEffect(() => {
+    if (!showConfetti) return
+    const timer = setTimeout(() => setShowConfetti(false), 2000)
+    return () => clearTimeout(timer)
+  }, [showConfetti])
 
   // FIX-70-01: useCallback (not useMemo) — correct hook for function identity
   const handleDragEnd = useCallback(
