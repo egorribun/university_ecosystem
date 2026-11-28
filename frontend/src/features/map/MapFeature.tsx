@@ -204,7 +204,7 @@ export function MapFeature() {
   /* ── Escape key → close sidebar ── */
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape" && selectedBuilding) {
+      if (!e.defaultPrevented && e.key === "Escape" && selectedBuilding) {
         handleCloseSidebar()
       }
     }
