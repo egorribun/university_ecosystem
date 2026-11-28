@@ -86,10 +86,11 @@ describe("NewsDetailHero", () => {
 
   it("opens and closes the lightbox", async () => {
     const user = userEvent.setup()
-    render(<NewsDetailHero {...baseProps} />)
+    const { container } = render(<NewsDetailHero {...baseProps} />)
     await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
     const dialog = screen.getByRole("dialog")
     expect(dialog).toBeInTheDocument()
+    expect(container).not.toContainElement(dialog)
     act(() => focusTrapState.onDeactivate?.())
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
 
