@@ -11,6 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/logging"
 )
 
 func TestDecodeChatAudienceRejectsMalformedJSONBoundaries(t *testing.T) {
@@ -165,6 +166,31 @@ func TestDecodeChatAudienceArrayRejectsInvalidOpeningToken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := decodeChatAudienceArray(json.NewDecoder(strings.NewReader(input)))
 			require.Error(t, err)
+		})
+	}
+}
+
+func TestProcessChatDelivery_ValidationLogsOmitRoomIdentifiers(t *testing.T) {
+	const subjectRoom = "sample-subject-room"
+	const otherRoom = "sample-envelope-room"
+	for _, tc := range []struct{ name, data, warning string }{
+		{"malformed envelope", "not json", "malformed NATS chat message dropped"},
+		{"room mismatch", `{"room":"sample-envelope-room","payload":{}}`, "chat subject/envelope/payload room mismatch"},
+		{"malformed audience", `{"room":"sample-subject-room","payload":{},"audience":null}`, "malformed NATS chat audience dropped"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs strings.Builder
+			h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 1)
+			h.Logger = logging.NewJSONLogger(&logs, nil)
+			h.processChatDelivery(t.Context(), &nats.Msg{
+				Subject: "chat." + subjectRoom,
+				Data:    []byte(tc.data),
+			}, false)
+
+			assert.Contains(t, logs.String(), tc.warning)
+			assert.NotContains(t, logs.String(), subjectRoom)
+			assert.NotContains(t, logs.String(), otherRoom)
+			assert.Empty(t, h.Broadcast)
 		})
 	}
 }
