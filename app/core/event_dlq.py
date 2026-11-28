@@ -255,10 +255,10 @@ class DeadLetterQueue:
                             if failed.retry_count >= max_retries:
                                 await self.remove(failed.event.event_id)
                                 logger.error(
-                                    "Event %s permanently failed DLQ replay after %d retries: %s",
-                                    failed.event.event_id,
-                                    failed.retry_count,
-                                    exc,
+                                    "Event permanently failed DLQ replay",
+                                    event_type=failed.event.event_type,
+                                    retry_count=failed.retry_count,
+                                    error_type=type(exc).__name__,
                                 )
 
                             if self._circuit_breaker:
@@ -333,10 +333,9 @@ class DeadLetterQueue:
         async with self._lock:
             self._queue.append(failed)
             logger.warning(
-                "Event added to DLQ: %s (id=%s, error=%s)",
-                event.event_type,
-                event.event_id,
-                failed.error_type,
+                "Event added to DLQ",
+                event_type=event.event_type,
+                error_type=failed.error_type,
             )
 
     async def get_all(self) -> list[FailedEvent]:
@@ -380,7 +379,9 @@ class DeadLetterQueue:
             for i, failed in enumerate(self._queue):
                 if failed.event.event_id == event_id:
                     del self._queue[i]
-                    logger.info("Event removed from DLQ: %s", event_id)
+                    logger.info(
+                        "Event removed from DLQ", event_type=failed.event.event_type
+                    )
                     return True
             return False
 
@@ -423,15 +424,15 @@ class DeadLetterQueue:
                 success_count += 1
                 success_ids.add(failed.event.event_id)
                 logger.info(
-                    "DLQ event replayed successfully: %s",
-                    failed.event.event_id,
+                    "DLQ event replayed successfully",
+                    event_type=failed.event.event_type,
                 )
             except Exception as e:  # RZ-22-01-JUSTIFIED: handler-nak — continues replaying remaining DLQ events on failure (reviewed TD-27-04)
                 fail_count += 1
                 logger.error(
-                    "DLQ replay failed for event %s: %s",
-                    failed.event.event_id,
-                    e,
+                    "DLQ replay failed",
+                    event_type=failed.event.event_type,
+                    error_type=type(e).__name__,
                 )
 
         # Remove successfully replayed events
