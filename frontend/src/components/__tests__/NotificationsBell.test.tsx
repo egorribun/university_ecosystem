@@ -171,6 +171,7 @@ describe("NotificationsBell", () => {
     const trigger = screen.getByRole("button", { name: "Open notifications" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger).not.toHaveAttribute("aria-controls")
     expect(trigger).not.toHaveAttribute("data-unread")
     expect(document.querySelector(".animate-ping")).not.toBeInTheDocument()
     expect(translationState.namespaces).toContainEqual(["system"])
@@ -308,7 +309,9 @@ describe("NotificationsBell", () => {
 
     await user.click(trigger)
     expect(trigger).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
+    const dialog = screen.getByRole("dialog", { name: "Notifications" })
+    expect(dialog.id).not.toBe("")
+    expect(trigger).toHaveAttribute("aria-controls", dialog.id)
     expect(screen.getByRole("button", { name: "Mark all as read" })).toHaveAttribute(
       "aria-label",
       "Mark all as read"
@@ -322,6 +325,7 @@ describe("NotificationsBell", () => {
 
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(trigger).not.toHaveAttribute("aria-controls")
     expect(trigger).toHaveFocus()
   })
 
