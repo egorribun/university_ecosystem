@@ -4,7 +4,7 @@
  * Wave 106; Wave 108 — click-to-expand panel.
  */
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
   Sun,
@@ -32,6 +32,7 @@ export function MapWeatherBadge() {
   const { t } = useTranslation("map")
   const { data, isLoading } = useMapWeather()
   const [isExpanded, setIsExpanded] = useState(false)
+  const dismissBoundaryRef = useRef<HTMLDivElement>(null)
 
   if (isLoading || !data) return null
 
@@ -41,7 +42,7 @@ export function MapWeatherBadge() {
   const temperatureText = `${data.temperature > 0 ? "+" : ""}${data.temperature}°`
 
   return (
-    <div className="relative mb-4">
+    <div ref={dismissBoundaryRef} className="relative mb-4">
       <button
         type="button"
         aria-expanded={isExpanded}
@@ -54,7 +55,12 @@ export function MapWeatherBadge() {
         <span className="hidden sm:inline text-[var(--text-tertiary)]">{conditionText}</span>
       </button>
 
-      <MapWeatherPanel data={data} open={isExpanded} onClose={() => setIsExpanded(false)} />
+      <MapWeatherPanel
+        data={data}
+        open={isExpanded}
+        onClose={() => setIsExpanded(false)}
+        dismissBoundaryRef={dismissBoundaryRef}
+      />
     </div>
   )
 }
