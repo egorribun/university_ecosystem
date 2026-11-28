@@ -142,7 +142,7 @@ export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCoun
     <div
       className={cn("sched-flip-countdown inline-flex items-center gap-1", className)}
       role="timer"
-      aria-live="polite"
+      aria-live="off"
       aria-label={t("schedule:countdown.ariaLabel", { mins, secs })}
       data-urgent={isUrgent || undefined}
     >
