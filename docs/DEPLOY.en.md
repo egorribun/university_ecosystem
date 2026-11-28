@@ -136,6 +136,7 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
+- With `docker-compose.full.yml` or the `docker-compose.observability.yml` overlay, backend metrics are already enabled. These Compose definitions and the [bundled Prometheus configuration](../infrastructure/observability/prometheus.yml) use the fixed username `metrics_scraper`. Supply `METRICS_BASIC_AUTH_PASSWORD` to Compose; the backend and Prometheus both use it. The base-only settings above do not override this username.
 - The `Cross-Origin-Resource-Policy` header is enabled by default (`ENABLE_CORP=true`); set `ENABLE_CORP=false` to disable it. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
 
 ## Database migrations
