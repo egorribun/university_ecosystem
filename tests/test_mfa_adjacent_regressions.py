@@ -274,9 +274,8 @@ async def test_trusted_device_binding_mismatch_log_keeps_user_identity() -> None
 
     assert result is None
     warning.assert_called_once_with(
-        "trusted_device_binding_mismatch user_id=%s device_id=%s",
+        "trusted_device_binding_mismatch user_id=%s",
         user.id,
-        device.id,
     )
     db.delete.assert_awaited_once_with(device)
     db.flush.assert_awaited_once()
