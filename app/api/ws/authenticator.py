@@ -76,7 +76,7 @@ class WsAuthenticator:
             logger.info("Attempting WS ticket auth")
             user, session_jti = await get_user_from_ticket(ticket)
             if user:
-                logger.info("WS ticket auth successful: user_id=%s", user.id)
+                logger.info("WS ticket auth successful")
             else:
                 logger.warning("WS ticket auth failed: invalid or expired ticket")
 
@@ -88,7 +88,7 @@ class WsAuthenticator:
                 logger.info("Attempting WS cookie auth")
                 user, session_jti = await get_user_from_cookie(access_token)
                 if user:
-                    logger.info("WS cookie auth successful: user_id=%s", user.id)
+                    logger.info("WS cookie auth successful")
                 else:
                     logger.warning("WS cookie auth failed: invalid cookie")
 
