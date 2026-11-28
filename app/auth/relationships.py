@@ -11,7 +11,8 @@ backend request path after the domain commit:
   service after a ``group_id`` change commits (see ``sync_group_participant``).
   Group schedules are gated by ``group#view``, which includes ``participant``.
 
-A SpiceDB failure is logged and never fails the request. The
+A transient SpiceDB failure is retried a bounded number of times within the
+write timeout. A failure that remains is logged and never fails the request. The
 event and group backfill scripts restore missing grants for current database
 rows. They do not remove stale grants left by failed deletes or reordered
 concurrent writes. These writes are owned by the backend request path and
@@ -51,9 +52,24 @@ ATTENDEE_RELATION: Final = "attendee"
 GROUP_OBJECT_TYPE: Final = "group"
 GROUP_PARTICIPANT_RELATION: Final = "participant"
 
-# Upper bound on one WriteRelationships round trip. Attendance writes happen on
-# the request path, so the bound stays short.
+# Upper bound on one relationship write, retries included. Attendance writes
+# happen on the request path, so the bound stays short.
 WRITE_TIMEOUT_SECONDS: Final = 5.0
+
+# A transient SpiceDB failure (a restarting server, a dropped connection) must
+# not silently drop a best-effort grant: without ``event#creator`` a teacher
+# cannot delete their own event. TOUCH and DELETE are idempotent, so a write is
+# retried after these pauses, inside the same overall WRITE_TIMEOUT_SECONDS.
+# Permanent errors (permission, validation, precondition) are not retried.
+RETRY_DELAYS_SECONDS: Final = (0.2, 0.5)
+_TRANSIENT_CODES: Final = frozenset(
+    {
+        grpc.StatusCode.UNAVAILABLE,
+        grpc.StatusCode.DEADLINE_EXCEEDED,
+        grpc.StatusCode.RESOURCE_EXHAUSTED,
+        grpc.StatusCode.ABORTED,
+    }
+)
 
 _OPERATIONS: Final[dict[str, RelationshipUpdate.Operation.ValueType]] = {
     "touch": RelationshipUpdate.OPERATION_TOUCH,
@@ -175,18 +191,36 @@ class EventRelationshipWriter:
         )
 
     async def write(self, updates: Sequence[RelationshipUpdate]) -> None:
-        """Send one WriteRelationships request; raise on any unconfirmed failure."""
+        """Send one WriteRelationships request; raise on any unconfirmed failure.
+
+        A transient failure is retried after each of ``RETRY_DELAYS_SECONDS``;
+        every attempt and pause share the overall ``WRITE_TIMEOUT_SECONDS``.
+        """
         if not updates:
             return
         stub = PermissionsServiceStub(self._channel)
         request = WriteRelationshipsRequest(updates=list(updates))
         try:
             async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
-                await stub.WriteRelationships(request)
+                for delay in (*RETRY_DELAYS_SECONDS, None):
+                    try:
+                        await stub.WriteRelationships(request)
+                    except (grpc.aio.AioRpcError, OSError) as err:
+                        if delay is None or not _is_transient(err):
+                            raise
+                        await asyncio.sleep(delay)
+                    else:
+                        return
         except (grpc.aio.AioRpcError, OSError, TimeoutError) as err:
             raise RelationshipWriteError(
                 "SpiceDB relationship write was not confirmed"
             ) from err
+
+
+def _is_transient(err: grpc.aio.AioRpcError | OSError) -> bool:
+    if isinstance(err, grpc.aio.AioRpcError):
+        return err.code() in _TRANSIENT_CODES
+    return True
 
 
 def _update(
