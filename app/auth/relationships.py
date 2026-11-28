@@ -202,15 +202,16 @@ class EventRelationshipWriter:
         request = WriteRelationshipsRequest(updates=list(updates))
         try:
             async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
-                for delay in (*RETRY_DELAYS_SECONDS, None):
+                for delay in RETRY_DELAYS_SECONDS:
                     try:
                         await stub.WriteRelationships(request)
-                    except (grpc.aio.AioRpcError, OSError) as err:
-                        if delay is None or not _is_transient(err):
-                            raise
-                        await asyncio.sleep(delay)
-                    else:
                         return
+                    except (grpc.aio.AioRpcError, OSError) as err:
+                        if not _is_transient(err):
+                            raise
+                    await asyncio.sleep(delay)
+                # The last attempt: its failure is final.
+                await stub.WriteRelationships(request)
         except (grpc.aio.AioRpcError, OSError, TimeoutError) as err:
             raise RelationshipWriteError(
                 "SpiceDB relationship write was not confirmed"
