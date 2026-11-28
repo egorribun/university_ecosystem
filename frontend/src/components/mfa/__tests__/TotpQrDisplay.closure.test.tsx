@@ -198,6 +198,7 @@ describe("TotpQrDisplay live announcements", () => {
       .fn()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("clipboard denied"))
+      .mockResolvedValueOnce(undefined)
     vi.stubGlobal("navigator", { clipboard: { writeText } })
     const { unmount } = render(
       <LiveRegionProvider>
@@ -231,8 +232,17 @@ describe("TotpQrDisplay live announcements", () => {
         await Promise.resolve()
       })
       expect(writeText).toHaveBeenCalledTimes(2)
-      expect(status.textContent).toBe("")
+      expect(status.textContent).toBe("mfa.totp.copyFailed")
+      expect(status.textContent).not.toContain(manualCode.value)
       expect(screen.getByRole("alert").textContent).not.toContain(manualCode.value)
+
+      await act(async () => {
+        fireEvent.click(button)
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledTimes(3)
+      expect(status.textContent).toBe("mfa.totp.copied")
+      expect(screen.queryByText("mfa.totp.copyFailed")).not.toBeInTheDocument()
     } finally {
       if (vi.isFakeTimers()) {
         act(() => {
@@ -364,4 +374,16 @@ it("ignores a clipboard rejection that settles after unmount", async () => {
   } finally {
     unmount()
   }
+})
+
+it("shows a manual-copy fallback when the clipboard is unavailable", async () => {
+  vi.stubGlobal("navigator", {})
+  render(<TotpQrDisplay otpauthUrl="otpauth://totp/Fallback" secret={String(123)} />)
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+  })
+
+  expect(screen.getByText("mfa.totp.copyFailed")).toBeVisible()
+  expect(screen.getByLabelText("mfa.totp.manualHeading")).toHaveValue(String(123))
 })
